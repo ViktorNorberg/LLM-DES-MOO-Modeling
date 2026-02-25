@@ -1,0 +1,27 @@
+flowchart TD
+    classDef default fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef machine fill:#bbf,stroke:#333,stroke-width:2px;
+    classDef buffer fill:#faf,stroke:#333,stroke-width:2px;
+    classDef moo fill:#afa,stroke:#333,stroke-width:2px;
+
+    MOO[**MOO Algorithm**]
+    Simulation[**Simulation Model**]
+    DelayBuffer[**Delay Buffer**]
+    Machine[**Machine**]
+    InputBuffer[**Input Buffer**]
+    OutputBuffer[**Output Buffer**]
+
+    MOO -->|optimize| Simulation
+    Simulation -->|uses| Machine
+    Simulation -->|uses| DelayBuffer
+    Machine -->|interacts with| InputBuffer
+    Machine -->|interacts with| OutputBuffer
+    MOO -->|adjust| DelayBuffer
+    MOO -->|adjust| Machine
+    MOO -->|maximize| Throughput
+    MOO -->|minimize| WIP
+
+    class MOO moo;
+    class Simulation default;
+    class Machine machine;
+    class DelayBuffer buffer;
