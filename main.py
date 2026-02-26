@@ -18,6 +18,7 @@ import os
 
 load_dotenv()
 
+#test
 
 api_key= os.getenv("OPENAI_KEY")
 
