@@ -21,12 +21,8 @@ load_dotenv()
 
 api_key= os.getenv("OPENAI_KEY")
 
-#api_key=""  #Your OpenAI API key here
-
 client = OpenAI(api_key=api_key)
 file_path_eventlog = Path("data/workingtest.csv")
-#file_path_machine = Path("data/workingtest.csv")
-#file_path_blueprintmodel_active = Path("blueprints/blueprint active.py")
 file_path_blueprintmodel_util = Path("blueprint/blueprint_util.py")
 final_path = Path("results")
 buffers_info_specific = "PostLoadingBuffer(Capacity = 2, processtime = 10), PostConveyorBuffer(Capacity = 2, processtime = 10), PostWashingBuffer(Capacity = 2, processtime = 10), PrePress1Buffer(Capacity = 3, processtime = 32), PrePress2Buffer(Capacity = 3, processtime = 32), " \
