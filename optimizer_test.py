@@ -112,6 +112,40 @@ class Modeloptimizer:
         resp= self.client.chat.completions.create(
             model=model, messages=[{"role": "user", "content": prompt}])
         return resp.choices[0].message.content
+    
+    def _inspector(self, code,
+        model = "gpt-4o"):
+        prompt = (
+            "Please evaluate if the following Python code is correct. "
+            "If it is correct, do nothing. If it is incorrect, please adapt it so that it runs correctly. Only answer with the code.\n\n"
+            f"```python\n{code}\n```")
+        resp = self.client.chat.completions.create(
+            model = model, messages=[{"role": "user", "content": prompt}])
+        return resp.choices[0].message.content
+    
+    def _suggest_improvements(self, model_code, user_input, MOO_pareto_csv,
+        model = "gpt-4o",
+        response_format={"type": "json_object"}):
+        prompt = (
+                "You are an AI assistant that suggests improvements to a production system based on the results of a multi-objective optimization (MOO) analysis. "
+                "The improvements should be based on the results of a MOO analysis, which are provided in a csv format. "
+                "Choose three datapoints on the provided pareto fron and suggest specific, implementable instructions to improve the system based on those datapoints. "
+                f"When choosing the datapoints, consider the these instructions from the perspective of a production manager: \n {user_input}\n"
+                "Based on the three datapoints you choose, suggest specific, implementable instructions to improve the system. "
+                "These should be short and concise statements, e.g. Increase the buffer size of buffer_1 to 8. buffer_2 to 10... etc. "
+                "They should be easily implementable with the existing model. "
+                f"Here is my Python code:\n\n```python\n {model_code}\n```\n\n"
+                f"Here are the results of the MOO analysis:\n\n {MOO_pareto_csv}\n"
+                "Only answer with the instructions in a json format."
+                "Each instruction should come with a brief explanation of why you chose that datapoint and how it will improve the system. ")
+        resp = self.client.chat.completions.create(
+            model=model,response_format = response_format, messages=[{"role": "user", "content": prompt}])
+        try:
+            operator_output = resp.choices[0].message.content.strip()
+            instructions_json = json.loads(operator_output)
+            return instructions_json
+        except Exception as e:
+            raise
 
 optimizer = Modeloptimizer(client)
 path = Path("results")
@@ -137,7 +171,7 @@ with open(mmd_path, "r") as file:
 MOO_initial_code = optimizer._generate_code(code_input, "Maximize throughput, minimize WIP", "Buffer sizes on the range [1,10]", "Throughput, Energy Consumption", UMLmmd)
 clean_initial_model = remove_code_wrappers(MOO_initial_code)
 save_model(clean_initial_model,path, "MOO_initial_code2.py")
-"""
+
 # Define your test inputs
 MOO_path = os.path.join("results", "MOO_initial_code2.py")
 # 2. Open and read the file
@@ -147,3 +181,23 @@ with open(MOO_path, "r") as file:
 combined_code = optimizer._combiner(code_input, "Maximize throughput, minimize WIP", "Buffer sizes on the range [1,10]", "Throughput, Energy Consumption", MOO_initial_code)
 clean_initial_model = remove_code_wrappers(combined_code)
 save_model(clean_initial_model,path, "initial_combined_code.py")
+
+# Define your test inputs
+pareto_path = Path("moo_simulation_results.csv")
+# 2. Open and read the file
+with open(pareto_path, "r") as file:
+    MOO_pareto_csv = file.read()
+
+instructions = optimizer._suggest_improvements(code_input, "I have a big order coming in, and I want need to prioritize high throughput", MOO_pareto_csv)
+print(instructions)
+
+"""
+# Define your test inputs
+combined_code = os.path.join("results", "initial_combined_code.py")
+# 2. Open and read the file
+with open(combined_code, "r") as file:
+    combined_code = file.read()
+
+
+results = run_python_code(combined_code)
+print(results)
