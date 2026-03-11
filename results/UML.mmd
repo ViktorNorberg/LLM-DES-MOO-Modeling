@@ -1,27 +1,138 @@
 flowchart TD
-    classDef default fill:#f9f,stroke:#333,stroke-width:2px;
-    classDef machine fill:#bbf,stroke:#333,stroke-width:2px;
-    classDef buffer fill:#faf,stroke:#333,stroke-width:2px;
-    classDef moo fill:#afa,stroke:#333,stroke-width:2px;
+A_Start["**Start MOO Optimization**
+Begin multi objective search over buffer capacities"]
+A1_DefineObjectives["**Define Objectives**
+Set objectives:
+Maximize throughput
+Minimize average WIP"]
+A2_DefineDecisionVars["**Define Decision Variables**
+Select buffer capacities as decision variables
+Buffers: PostLoadingBuffer, PostConveyorBuffer, PostWashingBuffer, PrePress1Buffer, PrePress2Buffer, PostPress12Buffer
+Each capacity in discrete range {1-10}"]
+A3_DefineConstraints["**Define Constraints**
+Keep existing machine parameters fixed
+Maintain simulation time and warmup
+Enforce integer capacities and feasible ranges"]
+A4_InitPopulation["**Initialize Population**
+Generate initial set of candidate solutions
+Each candidate has vector of 6 buffer capacities
+Random or space filling assignment in {1-10}"]
+B_MOOLoop["**MOO Algorithm Loop**
+Iterative search cycle
+Run until max generations or convergence"]
+B1_SelectSolution["**Select Candidate**
+Choose one candidate solution from population
+Example: via tournament or Pareto based selection"]
+B2_ApplyConfig["**Apply Buffer Configuration**
+Map candidate capacities to simulation model:
+PostLoadingBuffer.cap = x1
+PostConveyorBuffer.cap = x2
+PostWashingBuffer.cap = x3
+PrePress1Buffer.cap = x4
+PrePress2Buffer.cap = x5
+PostPress12Buffer.cap = x6"]
+B3_SetupSim["**Setup Simulation Environment**
+Create new SimPy environment
+Instantiate buffers and machines
+Wire splitter and merger to press buffers
+Attach part_generator and sampling process"]
+B4_RunRepLoop["**Run Replications**
+For robustness run multiple seeds for this candidate
+Accumulate KPIs over replications"]
+B4a_SetSeed["**Set Random Seed**
+Combine base seed and replication index
+Ensure independent randomness for each run"]
+B4b_RunSimulation["**Run Simulation**
+Call run_simulation with current seed
+Use configured buffer capacities
+Collect result metrics"]
+B4c_CollectMetrics["**Collect KPIs**
+Extract:
+Throughput from result.overall.throughput
+WIP from result.overall.wip
+Optionally energy and bottleneck info for analysis"]
+B4d_CheckMoreReps["**More Replications For Candidate**
+Have required number of replications been executed
+for this candidate"]
+B5_AggregateMetrics["**Aggregate Candidate Performance**
+Compute mean throughput across replications
+Compute mean WIP across replications
+Store objectives for this candidate"]
+B6_EvaluatePopulation["**Evaluate Population**
+Gather objectives for all candidates
+Identify dominance relationships
+Compute Pareto front and crowding measures"]
+B7_SelectParents["**Select Parents**
+Use Pareto ranking and diversity measures
+Choose parent solutions for variation operators"]
+B8_GenerateOffspring["**Generate Offspring**
+Create new candidate buffer sets from parents
+Use crossover and mutation on capacities"]
+B8a_Crossover["**Crossover Operator**
+Combine parent capacity vectors:
+Child xi from parent1 or parent2
+Maintain discrete values and ranges"]
+B8b_Mutation["**Mutation Operator**
+Randomly change some capacities by small integer steps
+Clamp mutated values to {1-10}"]
+B9_FormNewPopulation["**Form New Population**
+Merge parents and offspring
+Select next generation via Pareto and diversity criteria"]
+B10_CheckStopping["**Check Stopping Criteria**
+If max generations reached or
+Pareto front stable then stop
+Else continue loop"]
+C_StorePareto["**Store Pareto Optimal Set**
+Save non dominated solutions
+Each solution has buffer capacities and
+associated throughput and WIP"]
+C1_SelectTradeoff["**Select Preferred Trade Off**
+Optionally choose specific solution:
+For example via weighted scoring or
+decision maker preference on throughput vs WIP"]
+C2_ReportConfig["**Report Best Buffer Configuration**
+Output selected buffer capacities:
+PostLoadingBuffer, PostConveyorBuffer,
+PostWashingBuffer, PrePress1Buffer,
+PrePress2Buffer, PostPress12Buffer"]
+C3_IntegrateIntoCode["**Integrate Into Simulation Code**
+Update default capacities in production model
+Or provide configuration interface so that
+run_simulation uses optimized capacities"]
+C_End["**End**
+Optimization finished
+Optimized buffer configuration available for use"]
 
-    MOO[**MOO Algorithm**]
-    Simulation[**Simulation Model**]
-    DelayBuffer[**Delay Buffer**]
-    Machine[**Machine**]
-    InputBuffer[**Input Buffer**]
-    OutputBuffer[**Output Buffer**]
 
-    MOO -->|optimize| Simulation
-    Simulation -->|uses| Machine
-    Simulation -->|uses| DelayBuffer
-    Machine -->|interacts with| InputBuffer
-    Machine -->|interacts with| OutputBuffer
-    MOO -->|adjust| DelayBuffer
-    MOO -->|adjust| Machine
-    MOO -->|maximize| Throughput
-    MOO -->|minimize| WIP
+A_Start --> A1_DefineObjectives
+A1_DefineObjectives --> A2_DefineDecisionVars
+A2_DefineDecisionVars --> A3_DefineConstraints
+A3_DefineConstraints --> A4_InitPopulation
+A4_InitPopulation --> B_MOOLoop
 
-    class MOO moo;
-    class Simulation default;
-    class Machine machine;
-    class DelayBuffer buffer;
+B_MOOLoop --> B1_SelectSolution
+B1_SelectSolution --> B2_ApplyConfig
+B2_ApplyConfig --> B3_SetupSim
+B3_SetupSim --> B4_RunRepLoop
+
+B4_RunRepLoop --> B4a_SetSeed
+B4a_SetSeed --> B4b_RunSimulation
+B4b_RunSimulation --> B4c_CollectMetrics
+B4c_CollectMetrics --> B4d_CheckMoreReps
+B4d_CheckMoreReps -- No --> B4a_SetSeed
+B4d_CheckMoreReps -- Yes --> B5_AggregateMetrics
+
+B5_AggregateMetrics --> B6_EvaluatePopulation
+B6_EvaluatePopulation --> B7_SelectParents
+B7_SelectParents --> B8_GenerateOffspring
+B8_GenerateOffspring --> B8a_Crossover
+B8a_Crossover --> B8b_Mutation
+B8b_Mutation --> B9_FormNewPopulation
+B9_FormNewPopulation --> B10_CheckStopping
+B10_CheckStopping -- No --> B1_SelectSolution
+B10_CheckStopping -- Yes --> C_StorePareto
+
+C_StorePareto --> C1_SelectTradeoff
+C1_SelectTradeoff --> C2_ReportConfig
+C2_ReportConfig --> C3_IntegrateIntoCode
+C3_IntegrateIntoCode --> C_End

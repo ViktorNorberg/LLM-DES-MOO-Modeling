@@ -1,3 +1,4 @@
+
 import simpy
 import random
 import statistics
@@ -6,15 +7,15 @@ import numpy as np
 import csv
 from pymoo.core.problem import Problem
 from pymoo.algorithms.moo.nsga2 import NSGA2
-from pymoo.operators.crossover.sbx import SBXCrossover
+from pymoo.operators.crossover.sbx import SBX
 from pymoo.operators.mutation.pm import PM
 from pymoo.operators.sampling.rnd import IntegerRandomSampling
 from pymoo.termination import get_termination
 from pymoo.optimize import minimize
 
 RANDOM_SEED = 11
-SIM_TIME = 691200          # 8 days
-WARMUP_SECONDS = 86400     # 1 day
+SIM_TIME = 86400        # 8 days
+WARMUP_SECONDS = 3600     # 1 day
 MEASURE_UNTIL = SIM_TIME
 
 
@@ -695,14 +696,16 @@ class BufferCapacityOptimizationProblem(Problem):
             mean_tp = statistics.mean(throughputs) if throughputs else 0.0
             mean_wip = statistics.mean(wips) if wips else 0.0
 
+            # Objective 0: maximize throughput -> minimize negative throughput
             F[i, 0] = -mean_tp
+            # Objective 1: minimize WIP directly
             F[i, 1] = mean_wip
 
         out["F"] = F
 
 
 def optimize_buffers(
-        pop_size=20,
+        pop_size=10,
         n_gen=10,
         n_replications=3,
         base_seed=RANDOM_SEED,
@@ -721,8 +724,8 @@ def optimize_buffers(
     )
 
     sampling = IntegerRandomSampling()
-    crossover = SBXCrossover(eta=15, prob=0.9)
-    mutation = PM(eta=20, prob=None)
+    crossover = SBX(eta=15, prob=0.9)
+    mutation = PM(eta=20)
 
     algorithm = NSGA2(
         pop_size=pop_size,

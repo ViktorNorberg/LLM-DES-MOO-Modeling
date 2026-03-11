@@ -18,6 +18,7 @@ pareto_solutions = df[mask]
 
 print("Pareto-optimal solutions:")
 print(pareto_solutions)
+print(pareto_solutions.to_string(index=False))
 
 
 plt.show()
