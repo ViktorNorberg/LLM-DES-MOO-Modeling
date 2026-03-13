@@ -57,13 +57,18 @@ class Modeloptimizer:
         #Extract Pareto-optimal solutions from the MOO results
         pareto_solutions = self._find_pareto_front(selected_objectives, directions)
 
-        #visualize the results
-        self.visualize_MOO_results(selected_objectives)
+        
     
         #Ask the user for their priorities and suggest improvements based on the Pareto-optimal solutions
         user_input = input("What are your current priorities for the production system? (e.g. prioritize high throughput, minimize energy consumption, etc.) ")
         print("Generating suggestions for improvements based on the Pareto-optimal solutions...")
         suggestions = self._suggest_improvements(model_code, user_input, pareto_solutions)
+
+
+        #visualize the results
+        self.json_to_csv(suggestions)
+        self.visualize_MOO_results(selected_objectives)
+
         return suggestions
     
 
@@ -83,6 +88,8 @@ class Modeloptimizer:
                 f"Here are the results of the MOO analysis:\n\n {MOO_pareto_csv}\n"
                 "Only answer with the instructions in a json format."
                 "The instructions should only contain the input variable settings and corresponding objectives values, no explanations"
+                "The json format should be like this: { 'instructions': [ {'PostLoadingBuffer': 1, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 1, 'PrePress1Buffer': 1, 'PrePress2Buffer': 1, 'PostPress12Buffer': 1, 'throughput': 28.114285714285717, 'wip': 10.779661016949152}, {'PostLoadingBuffer': 1, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 1, 'PrePress1Buffer': 1, 'PrePress2Buffer': 3, 'PostPress12Buffer': 1, 'throughput': 30.17142857142857, 'wip': 12.836158192090396}] }"
+                "Make sure to only output the json object and nothing else. No explanations, no markdown fences."
                 )
         
         resp = self.client.chat.completions.create(
@@ -143,7 +150,7 @@ class Modeloptimizer:
                  f"These are the input variables for the MOO algorithm that can be adjusted: {input_variables}\n"
                  "The MOO algortihm are to be written in python using the pymoo library. "
                  f"use the UML mmd {UMLmmd} file as guidence to how to implement you MOO algorithm"
-                 "Make the algorithm print what generation is currently running"
+                 "Make the MOO algorithm print what generation is currently running when the code is executed, to let the user know that the code is running and not frozen. "
                  "only output the code, no explanations, no markdown fences"
                  "make sure that the MOO code is compatible with the existing simulation code, and that it can be easily integrated with the existing code"
                  ""
@@ -318,6 +325,26 @@ class Modeloptimizer:
                 if attempt == max_attempts:
                     print("Maximum fix attempts reached. Please check the code manually.")
                     return None
+                
+    def json_to_csv(json_data, filename="suggested_improvements.csv"):
+        try:
+            # 1. Dynamically find the key that holds the list (e.g., 'instructions')
+            # This takes the first key it finds in the dictionary
+            root_key = list(json_data.keys())[0]
+            records = json_data[root_key]
+
+            # 2. Convert to DataFrame
+            # Pandas automatically extracts column names from the dictionary keys
+            df = pd.DataFrame(records)
+
+            # 3. Save to the main folder
+            df.to_csv(filename, index=False)
+            
+            print(f"✅ Successfully saved {len(df)} datapoints to '{filename}'")
+            print(f"Columns identified: {list(df.columns)}")
+            
+        except Exception as e:
+            print(f"❌ Error converting JSON to CSV: {e}")
 
     def visualize_MOO_results(self, selected_objectives):
         
@@ -329,8 +356,11 @@ class Modeloptimizer:
         df2 = pd.read_csv("moo_pareto_solutions.csv")
         df2['Type'] = 'Pareto Optimal'
 
+        df3 = pd.read_csv("suggested_improvements.csv")
+        df3['Type'] = 'LLM chosen points'
+
         # Combine them
-        combined_df = pd.concat([df, df2], ignore_index=True)
+        combined_df = pd.concat([df, df2, df3], ignore_index=True)
 
         hover_cols = [col for col in combined_df.columns if col not in selected_objectives and col != 'Type']
         

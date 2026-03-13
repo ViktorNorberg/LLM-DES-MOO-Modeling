@@ -129,8 +129,11 @@ def visualize_MOO_results(selected_objectives):
     df['Type'] = 'Standard Solution'
     df2['Type'] = 'Pareto Optimal'
 
+    df3 = pd.read_csv("suggested_improvements.csv")
+    df3['Type'] = 'LLM chosen points'
+
     # 4. Combine them
-    combined_df = pd.concat([df, df2], ignore_index=True)
+    combined_df = pd.concat([df, df2, df3], ignore_index=True)
 
     # 5. Create the interactive scatter plot
     fig = px.scatter(
