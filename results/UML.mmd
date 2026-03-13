@@ -1,76 +1,40 @@
 flowchart TD
-Start["**Start MOO Optimization**<br/>Initialize multi objective optimization for buffer capacities"]
-DefineObjectives["**Define Objectives**<br/>Set objectives: maximize throughput, minimize WIP"]
-DefineDecisionVars["**Define Decision Variables**<br/>Buffers capacities as discrete integers {1-3} for<br/>PostLoadingBuffer, PostConveyorBuffer, PostWashingBuffer,<br/>PrePress1Buffer, PrePress2Buffer, PostPress12Buffer"]
-DefineConstraints["**Define Constraints**<br/>Hard constraints on capacities {1-3}<br/>Simulation time and warmup fixed<br/>Model structure and routing fixed"]
-SelectMOOAlgo["**Select MOO Algorithm**<br/>Choose algorithm such as NSGA II or MOEA/D<br/>Configure population size, generations, crossover, mutation"]
-InitPopulation["**Initialize Population**<br/>Generate initial set of candidate capacity vectors<br/>Each individual is a tuple of 6 integer capacities {1-3}"]
-LoopGen["**Generation Loop**<br/>Iterate over generations until stopping criterion met"]
-EvalPop["**Evaluate Population**<br/>For each individual capacity configuration<br/>call simulation wrapper to obtain KPIs"]
-CreateSimConfig["**Create Sim Config**<br/>Map individual genes to buffer capacities<br/>Build configuration object for run_simulation"]
-RunSimWrapper["**Run Simulation Wrapper**<br/>Call run_simulation_with_capacities<br/>which internally calls run_simulation multiple times"]
-ClassMOOController["**Class MOOController**<br/>Attributes: population, objectives, constraints,<br/>max_generations, current_generation, archive<br/>Methods: initialize_population, evaluate_population,<br/>select_parents, apply_crossover, apply_mutation,<br/>update_archive, run_optimization"]
-ClassSimConfig["**Class SimulationConfig**<br/>Attributes: post_loading_cap, post_conveyor_cap,<br/>post_washing_cap, pre_press1_cap, pre_press2_cap,<br/>post_press12_cap, runs, warmup, sim_time, seed_base<br/>Methods: to_buffer_dict"]
-ClassSimRunner["**Class SimulationRunner**<br/>Attributes: config<br/>Methods: run_replications, single_run,<br/>aggregate_results, compute_objectives"]
-ClassIndividual["**Class Individual**<br/>Attributes: genome capacities vector length 6,<br/>objectives throughput, wip,<br/>constraints_ok, rank, crowding_distance<br/>Methods: decode_to_config, dominates"]
-ClassPopulation["**Class Population**<br/>Attributes: individuals list of Individual<br/>Methods: sort_by_rank, get_pareto_fronts"]
-ClassObjectiveEvaluator["**Class ObjectiveEvaluator**<br/>Attributes: weights optional, normalization_params<br/>Methods: evaluate individual, compute_penalties"]
-ModifyRunSimulation["**Modify run_simulation**<br/>Refactor to accept buffer capacities as parameters<br/>and return throughput and WIP for each run"]
-SetBuffersFromConfig["**Set Buffers From Config**<br/>Inside run_simulation_with_capacities<br/>instantiate DelayBuffer objects with capacities<br/>from SimulationConfig"]
-CallRunSimulation["**Call run_simulation**<br/>Execute simulation for given seed and config<br/>collect throughput, WIP, energy, bottleneck data"]
-AggregateKPIs["**Aggregate KPIs**<br/>Average throughput and WIP over replications<br/>compute objective vector for individual"]
-AssignObjectives["**Assign Objectives to Individual**<br/>Set individual.throughput and individual.wip<br/>mark constraints_ok if capacities in {1-3}"]
-CheckConstraints["**Check Constraints**<br/>Verify all capacities within {1-3}<br/>discard or penalize infeasible individuals"]
-NonDomSort["**Non dominated Sorting**<br/>Sort individuals into Pareto fronts<br/>based on throughput and WIP"]
-CrowdingCalc["**Crowding Distance**<br/>Compute crowding distance within each front<br/>for diversity preservation"]
-SelectParents["**Select Parents**<br/>Use tournament selection based on rank<br/>and crowding distance"]
-Crossover["**Crossover Operator**<br/>Combine parent genomes to create offspring<br/>ensure integer capacities and bounds {1-3}"]
-Mutation["**Mutation Operator**<br/>Randomly change capacity genes by plus or minus 1<br/>clip to {1-3}"]
-CreateOffspringPop["**Create Offspring Population**<br/>Build new set of candidate individuals<br/>from crossover and mutation results"]
-MergePopulations["**Merge Populations**<br/>Combine parent and offspring populations<br/>for next non dominated sorting"]
-UpdateArchive["**Update Pareto Archive**<br/>Store non dominated solutions across generations<br/>for final output"]
-CheckStop["**Check Stopping Criterion**<br/>If max_generations reached or convergence detected<br/>terminate optimization loop"]
-ExtractParetoSet["**Extract Pareto Set**<br/>Collect final non dominated individuals<br/>with their capacity vectors and KPIs"]
-SelectPreferredSolution["**Select Preferred Solution**<br/>Optionally apply decision maker preferences<br/>choose one configuration from Pareto set"]
-ExportBestConfig["**Export Best Configuration**<br/>Save selected buffer capacities to file or database<br/>for use in production or further analysis"]
-UseConfigInMain["**Use Config in Main Simulation**<br/>Replace hard coded capacities in main block<br/>with optimized capacities from MOO results"]
-End["**End Optimization**<br/>Return Pareto front and selected configuration<br/>ready for deployment in production model"]
+Start["**Start**<br/>Begin optimization"]
+MOO_Controller["**MOO_Controller**<br/>Population based multi objective optimizer<br/>Objectives throughput max and wip min"]
+BufferDomain["**Buffer_Capacity_Domain**<br/>All DelayBuffer capacity variables<br/>Discrete values {1-4}"]
+Population["**Population**<br/>Collection of Individuals<br/>Configurable size"]
+Individual["**Individual**<br/>Attributes vector of buffer capacities<br/>Methods mutate crossover evaluate"]
+Selection["**Selection**<br/>Choose parents for reproduction<br/>Tournament or ranking"]
+Crossover["**Crossover**<br/>Combine parent capacity vectors<br/>Discrete operators"]
+Mutation["**Mutation**<br/>Random gene perturbation<br/>Clamp to {1-4}"]
+StochasticEval["**Stochastic_Evaluator**<br/>Run multiple seeds per individual<br/>Aggregate throughput and wip statistics"]
+SimulatorRun["**Simulator_Run**<br/>Invoke run_simulation with candidate capacities<br/>Return overall metrics throughput and wip"]
+SimulationModel["**Simulation_Model**<br/>Encapsulates run_simulation setup and execution<br/>Exposes API to set DelayBuffer capacities"]
+DelayBufferClass["**DelayBuffer**<br/>Attributes cap delay tokens store<br/>Methods put get free_capacity in_transit_count"]
+MachineClass["**Machine**<br/>Attributes process_time availability mttr working_power waiting_power<br/>Methods run _breakdown_cycle waiting_energy_consumption working_energy_consumption"]
+ParetoArchive["**Pareto_Archive**<br/>Store non dominated solutions<br/>Update after each evaluation"]
+Replacement["**Population_Replacement**<br/>Form next generation from parents offspring and archive"]
+Termination["**Termination_Criteria**<br/>Max generations or time budget or no improvement"]
+Output["**Optimized_Configurations**<br/>Pareto front of buffer capacity vectors<br/>Tradeoffs throughput and wip"]
+End["**End**<br/>Optimization complete and export results"]
 
-Start --> DefineObjectives
-DefineObjectives --> DefineDecisionVars
-DefineDecisionVars --> DefineConstraints
-DefineConstraints --> SelectMOOAlgo
-SelectMOOAlgo --> ClassMOOController
-ClassMOOController --> InitPopulation
-InitPopulation --> ClassIndividual
-InitPopulation --> ClassPopulation
-InitPopulation --> LoopGen
-LoopGen --> EvalPop
-EvalPop --> CreateSimConfig
-CreateSimConfig --> ClassSimConfig
-CreateSimConfig --> RunSimWrapper
-RunSimWrapper --> ClassSimRunner
-RunSimWrapper --> ModifyRunSimulation
-ModifyRunSimulation --> SetBuffersFromConfig
-SetBuffersFromConfig --> CallRunSimulation
-CallRunSimulation --> AggregateKPIs
-AggregateKPIs --> AssignObjectives
-AssignObjectives --> CheckConstraints
-CheckConstraints --> ClassObjectiveEvaluator
-CheckConstraints --> NonDomSort
-NonDomSort --> CrowdingCalc
-CrowdingCalc --> SelectParents
-SelectParents --> Crossover
+Start --> MOO_Controller
+MOO_Controller --> BufferDomain
+MOO_Controller --> Population
+Population --> Individual
+Individual --> Selection
+Selection --> Crossover
 Crossover --> Mutation
-Mutation --> CreateOffspringPop
-CreateOffspringPop --> MergePopulations
-MergePopulations --> UpdateArchive
-UpdateArchive --> CheckStop
-CheckStop -->|continue| LoopGen
-CheckStop -->|stop| ExtractParetoSet
-ExtractParetoSet --> SelectPreferredSolution
-SelectPreferredSolution --> ExportBestConfig
-ExportBestConfig --> UseConfigInMain
-UseConfigInMain --> End
-UpdateArchive --> ClassPopulation
-UpdateArchive --> ClassIndividual
+Mutation --> StochasticEval
+StochasticEval --> SimulatorRun
+SimulatorRun --> SimulationModel
+SimulationModel --> DelayBufferClass
+SimulationModel --> MachineClass
+SimulatorRun --> StochasticEval
+StochasticEval --> ParetoArchive
+ParetoArchive --> Replacement
+Replacement --> Population
+ParetoArchive --> Termination
+Termination -->|not finished| Selection
+Termination -->|finished| Output
+Output --> End

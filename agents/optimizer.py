@@ -9,6 +9,8 @@ from helpers.runner import run_python_code
 from paretoset import paretoset
 import pandas as pd
 import matplotlib.pyplot as plt
+import plotly.express as px
+
 
 class Modeloptimizer:
     def __init__(self, client: OpenAI):
@@ -45,7 +47,7 @@ class Modeloptimizer:
 
         #Combine the MOO code with the existing code
         print("Combining the MOO code with the existing code...")
-        combined_code = self._combiner(model_code, MOO_code)
+        combined_code = self._combiner(model_code, MOO_code, selected_objectives)
         clean_initial_combined_model = remove_code_wrappers(combined_code)
         save_model(clean_initial_combined_model, path, "initial_combined_code.py")
 
@@ -54,22 +56,20 @@ class Modeloptimizer:
 
         #Extract Pareto-optimal solutions from the MOO results
         pareto_solutions = self._find_pareto_front(selected_objectives, directions)
-        MOO_pareto_csv_path = Path("moo_pareto_solutions.csv")
-        pareto_solutions.to_csv(MOO_pareto_csv_path, index=False)
-        with open(MOO_pareto_csv_path, "r") as file:
-            pareto_solutions_string = file.read()
 
-
+        #visualize the results
+        self.visualize_MOO_results(selected_objectives)
+    
         #Ask the user for their priorities and suggest improvements based on the Pareto-optimal solutions
         user_input = input("What are your current priorities for the production system? (e.g. prioritize high throughput, minimize energy consumption, etc.) ")
         print("Generating suggestions for improvements based on the Pareto-optimal solutions...")
-        suggestions = self._suggest_improvements(model_code, user_input, pareto_solutions_string)
+        suggestions = self._suggest_improvements(model_code, user_input, pareto_solutions)
         return suggestions
     
 
 
     def _suggest_improvements(self, model_code, user_input, MOO_pareto_csv,
-        model = "gpt-5.1",
+        model = "gpt-5-mini",
         response_format={"type": "json_object"}):
         prompt = (
                 "You are an AI assistant that suggests improvements to a production system based on the results of a multi-objective optimization (MOO) analysis. "
@@ -97,7 +97,7 @@ class Modeloptimizer:
             raise
     
     def _generate_UML(self, model_code: str, objectives, input_variables,
-        model: str ="gpt-5.1") -> str:
+        model: str ="gpt-5-mini") -> str:
         prompt = (
                 "You are an AI assistant that generates UML activity diagrams from natural language."
                 "The UML should include the classes, their attributes, and methods. "
@@ -126,8 +126,8 @@ class Modeloptimizer:
 
         resp = self.client.chat.completions.create(
             model=model, 
-            messages=[{"role": "user", "content": prompt}], 
-            temperature=0.1)
+            messages=[{"role": "user", "content": prompt}]) 
+            #temperature=0.1)
         try:
             return resp.choices[0].message.content
         except Exception as e:
@@ -158,7 +158,7 @@ class Modeloptimizer:
                 raise e     
             
     
-    def _combiner(self, model_code, MOO_code,
+    def _combiner(self, model_code, MOO_code, selected_objectives,
         model = "gpt-5.1"):
         prompt = (
             "You are an AI assistant that combines python code"
@@ -170,7 +170,8 @@ class Modeloptimizer:
             f"Here is the MOO algorithm code:\n\n```python\n {MOO_code}\n```\n\n"
             "Make sure that the combined code is properly integrated, with the MOO algorithm being called in the right place, and that all necessary imports and dependencies are included. "
             "When the combined code is run the MOO algorithm should optimize the simulation code and output all results as a table of the different solutions found by the MOO algorithm, with their corresponding KPI values."
-            "The final combined python code should return a csv file with all the different solutions from every generation found by the MOO algorithm, with their corresponding KPI values."
+            "The final combined python code should return a csv file with all the different solutions from every generation found by the MOO algorithm"
+            f"Make sure that the csv file contain KPI values for the selected objectives: {selected_objectives}, the column names should be the same as the objective names. "
             "Name the csv file 'moo_simulation_results.csv'")
         
         resp= self.client.chat.completions.create(
@@ -181,19 +182,6 @@ class Modeloptimizer:
         return resp.choices[0].message.content
     
 
-    """
-    def _inspector(self, combined_code, objectives, input_variables,
-        model = "gpt-5.1"):
-        prompt = (
-            "Please evaluate if the following Python code is correct and will run without errors. "
-            "If it is correct, do nothing. If it is incorrect, please adapt it so that it runs correctly. Only answer with the code.\n\n"
-            f"```python\n{combined_code}\n```"
-            f"Make sure that the MOO algorithm optimizes these objectives: {objectives}, by changing these input variables: {input_variables}. ")
-        resp = self.client.chat.completions.create(
-            model = model, messages=[{"role": "user", "content": prompt}], temperature=0.2)
-        return resp.choices[0].message.content
-
-    """
 
     def _inspector(self, combined_code, objectives, input_variables, error_message=None, 
         model="gpt-5.1"):
@@ -287,7 +275,14 @@ class Modeloptimizer:
 
         pareto_solutions = df[mask]
 
-        return pareto_solutions
+        MOO_pareto_csv_path = Path("moo_pareto_solutions.csv")
+
+        pareto_solutions.to_csv(MOO_pareto_csv_path, index=False)
+
+        with open(MOO_pareto_csv_path, "r") as file:
+            pareto_solutions_string = file.read()
+
+        return pareto_solutions_string
     
 
     
@@ -323,3 +318,38 @@ class Modeloptimizer:
                 if attempt == max_attempts:
                     print("Maximum fix attempts reached. Please check the code manually.")
                     return None
+
+    def visualize_MOO_results(self, selected_objectives):
+        
+        # Load your data
+        df = pd.read_csv("moo_simulation_results.csv")
+        df['Type'] = 'Standard Solution'
+
+        # If you want to include the Pareto solutions in the same interactive plot:
+        df2 = pd.read_csv("moo_pareto_solutions.csv")
+        df2['Type'] = 'Pareto Optimal'
+
+        # Combine them
+        combined_df = pd.concat([df, df2], ignore_index=True)
+
+        hover_cols = [col for col in combined_df.columns if col not in selected_objectives and col != 'Type']
+        
+        # Create the interactive scatter plot
+        fig = px.scatter(
+            combined_df, 
+            x=selected_objectives[0], 
+            y=selected_objectives[1], 
+            color="Type",
+            hover_data=hover_cols, # Now strictly contains metadata columns
+            title="Interactive MOO Simulation Results",
+            labels={
+                selected_objectives[0]: selected_objectives[0].replace('_', ' ').title(),
+                selected_objectives[1]: selected_objectives[1].replace('_', ' ').title()
+            },
+            template="plotly_white"
+        )
+        
+        # Improve layout: force the legend to be visible and markers to be distinct
+        fig.update_traces(marker=dict(size=10, opacity=0.8, line=dict(width=1, color='DarkGrey')))
+        
+        fig.show()

@@ -153,4 +153,14 @@ def visualize_MOO_results(selected_objectives):
     fig.show()
 
 
-visualize_MOO_results(selected_objectives=["wip", "throughput"])
+
+def adder(a,b):
+    x = a + b
+    visualize_MOO_results(selected_objectives=["wip", "throughput"])
+    return x
+
+
+x = adder(2,3)
+
+print(x)
+

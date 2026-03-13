@@ -1,22 +1,19 @@
-import random
-import statistics
 import numpy as np
-from collections import Counter
-
 from pymoo.core.problem import Problem
 from pymoo.algorithms.moo.nsga2 import NSGA2
-from pymoo.operators.crossover.sbx import SBX
-from pymoo.operators.mutation.pm import PM
+from pymoo.operators.crossover.pntx import TwoPointCrossover
+from pymoo.operators.mutation.pm import PolynomialMutation
 from pymoo.operators.sampling.rnd import IntegerRandomSampling
+from pymoo.termination import get_termination
 from pymoo.optimize import minimize
 from pymoo.core.callback import Callback
-
-# -------------------------------------------------------------------------
-# Existing simulation code (slightly refactored to accept capacities)
-# -------------------------------------------------------------------------
-
+import statistics
+from collections import Counter
+import random
 import simpy
 
+
+# ----------------- Existing simulation code (slightly refactored to accept capacities) -----------------
 
 RANDOM_SEED = 11
 
@@ -26,13 +23,6 @@ MEASURE_UNTIL = SIM_TIME
 
 
 def production_wait_time(now: float) -> float:
-    """
-    Compute how long (in seconds) the machine must wait until production is allowed.
-
-    New stop rules (7-day periodic):
-    - Friday 17:00  -> Saturday 07:00
-    - Saturday 17:00 -> Sunday 07:00
-    """
     SEC_PER_DAY = 86400
     day = int((now // SEC_PER_DAY) % 7)  # 0=Mon ... 6=Sun
     time_of_day = now % SEC_PER_DAY
@@ -40,8 +30,6 @@ def production_wait_time(now: float) -> float:
     def secs(h, m=0, s=0):
         return h * 3600 + m * 60 + s
 
-    # Friday (4): stop 17:00–24:00, then continue on Saturday 00:00–07:00
-    # Saturday (5): stop 17:00–24:00, then continue on Sunday 00:00–07:00
     if day == 4:  # Friday
         stop1_start = secs(17)
         stop1_end = secs(24)
@@ -50,8 +38,6 @@ def production_wait_time(now: float) -> float:
         return 0.0
 
     if day == 5:  # Saturday
-        # 00:00–07:00 is still the Friday–Saturday block (already handled by previous day),
-        # but since function must be purely local in time, model only Sat 17–24 and Sun 00–07
         stop1_start = secs(0)
         stop1_end = secs(7)
         stop2_start = secs(17)
@@ -62,7 +48,7 @@ def production_wait_time(now: float) -> float:
             return max(0.0, stop2_end - time_of_day)
         return 0.0
 
-    if day == 6:  # Sunday: 00–07 blocked from Sat, but model only local window 00–07
+    if day == 6:  # Sunday
         stop_start = secs(0)
         stop_end = secs(7)
         if stop_start <= time_of_day < stop_end:
@@ -270,14 +256,25 @@ def kwh_per_sec(x):
 
 
 def run_simulation_with_capacities(seed,
-                                   post_loading_cap=2,
-                                   post_conveyor_cap=2,
-                                   post_washing_cap=2,
-                                   pre_press1_cap=3,
-                                   pre_press2_cap=3,
-                                   post_press12_cap=3,
+                                   caps,
                                    warmup=WARMUP_SECONDS,
                                    measure_until=MEASURE_UNTIL):
+    """
+    caps: iterable of 6 integers in [1,4]
+      [PostLoadingBuffer,
+       PostConveyorBuffer,
+       PostWashingBuffer,
+       PrePress1Buffer,
+       PrePress2Buffer,
+       PostPress12Buffer]
+    """
+    (cap_PostLoadingBuffer,
+     cap_PostConveyorBuffer,
+     cap_PostWashingBuffer,
+     cap_PrePress1Buffer,
+     cap_PrePress2Buffer,
+     cap_PostPress12Buffer) = caps
+
     random.seed(seed)
     env = simpy.Environment()
 
@@ -286,20 +283,17 @@ def run_simulation_with_capacities(seed,
     sink = simpy.Store(env, capacity=100000)
     defects = simpy.Store(env, capacity=100000)
 
-    # Buffers (capacities from parameters)
-    PostLoadingBuffer = DelayBuffer(env, cap=int(post_loading_cap), delay=10)
-    PostConveyorBuffer = DelayBuffer(env, cap=int(post_conveyor_cap), delay=10)
-    PostWashingBuffer = DelayBuffer(env, cap=int(post_washing_cap), delay=10)
-    PrePress1Buffer = DelayBuffer(env, cap=int(pre_press1_cap), delay=32)
-    PrePress2Buffer = DelayBuffer(env, cap=int(pre_press2_cap), delay=32)
-    PostPress12Buffer = DelayBuffer(env, cap=int(post_press12_cap), delay=32)
+    # Buffers with variable capacities
+    PostLoadingBuffer = DelayBuffer(env, cap=cap_PostLoadingBuffer, delay=10)
+    PostConveyorBuffer = DelayBuffer(env, cap=cap_PostConveyorBuffer, delay=10)
+    PostWashingBuffer = DelayBuffer(env, cap=cap_PostWashingBuffer, delay=10)
+    PrePress1Buffer = DelayBuffer(env, cap=cap_PrePress1Buffer, delay=32)
+    PrePress2Buffer = DelayBuffer(env, cap=cap_PrePress2Buffer, delay=32)
+    PostPress12Buffer = DelayBuffer(env, cap=cap_PostPress12Buffer, delay=32)
 
-    # Helper buffer between parallel presses and common PostPress12Buffer
     press1_out = simpy.Store(env, capacity=3)
     press2_out = simpy.Store(env, capacity=3)
 
-    # Machines following given routing and station table
-    # Loading robot -> Conveyor belt
     Loading_robot = Machine(
         env, "Loading robot",
         input_buffer=raw_input,
@@ -311,7 +305,6 @@ def run_simulation_with_capacities(seed,
         waiting_power=kwh_per_sec(0.25),
     )
 
-    # PostLoadingBuffer -> Conveyor belt -> PostConveyorBuffer
     Conveyor_belt = Machine(
         env, "Conveyor belt",
         input_buffer=PostLoadingBuffer,
@@ -323,7 +316,6 @@ def run_simulation_with_capacities(seed,
         waiting_power=kwh_per_sec(0.0),
     )
 
-    # Conveyor belt -> Washing machine -> PostWashingBuffer
     Washing_machine = Machine(
         env, "Washing machine",
         input_buffer=PostConveyorBuffer,
@@ -335,11 +327,10 @@ def run_simulation_with_capacities(seed,
         waiting_power=kwh_per_sec(4.28),
     )
 
-    # Conveyor belt -> Washing machine -> PostWashingBuffer -> Hantering cell
     Hantering_cell = Machine(
         env, "Hantering cell",
         input_buffer=PostWashingBuffer,
-        output_buffer=None,  # will be reassigned to hantering_out for splitting
+        output_buffer=None,
         process_time=25.0,
         availability=97.79,
         mttr=74.0,
@@ -347,15 +338,11 @@ def run_simulation_with_capacities(seed,
         waiting_power=kwh_per_sec(0.50),
     )
 
-    # After Hantering_cell, split evenly into PrePress1Buffer and PrePress2Buffer
-    # Represent Hantering_cell output as an explicit store for splitting
     hantering_out = simpy.Store(env, capacity=6)
     Hantering_cell.output_buffer = hantering_out
 
-    # Start splitter process for parallel presses
     env.process(splitter(env, hantering_out, PrePress1Buffer, PrePress2Buffer))
 
-    # Hantering cell -> Presses cell 1
     Presses_cell_1 = Machine(
         env, "Presses cell 1",
         input_buffer=PrePress1Buffer,
@@ -367,7 +354,6 @@ def run_simulation_with_capacities(seed,
         waiting_power=kwh_per_sec(1.25),
     )
 
-    # Parallel: Presses cell 2 || Presses cell 1
     Presses_cell_2 = Machine(
         env, "Presses cell 2",
         input_buffer=PrePress2Buffer,
@@ -379,10 +365,8 @@ def run_simulation_with_capacities(seed,
         waiting_power=kwh_per_sec(1.25),
     )
 
-    # Merge parallel presses into common buffer PostPress1&Press2Buffer
     merger(env, press1_out, press2_out, PostPress12Buffer)
 
-    # Presses cell 2 -> Quality station cell (take from merged flow)
     Quality_station_cell = Machine(
         env, "Quality station cell",
         input_buffer=PostPress12Buffer,
@@ -442,173 +426,61 @@ def run_simulation_with_capacities(seed,
     throughput = (total_produced / hours) if hours > 0 else 0.0
     avg_wip = statistics.mean(wip_samples) if wip_samples else 0.0
 
-    result = {"overall": {
-        "throughput": throughput,
-        "wip": avg_wip,
-        "produced_parts": total_produced},
-        "machine_energy": {}}
-
-    for m in machines_list:
-        waiting_energy = m.waiting_energy_consumption()
-        working_energy = m.working_energy_consumption()
-        total_energy = waiting_energy + working_energy
-        result["machine_energy"][m.name] = {
-            "working_time": m.working_time,
-            "waiting_time": m.failed_time_total + m.blocked_time,
-            "working_energy": working_energy,
-            "waiting_energy": waiting_energy,
-            "total_energy": total_energy}
-
-    bottleneck_data = {}
-    for m in machines_list:
-        m_th = m.processed_count / hours if hours > 0 else 0.0
-        util = (m.working_time / (measure_until - warmup)) * 100.0 if (measure_until > warmup) else 0.0
-        bottleneck_data[m.name] = {
-            "throughput": m_th,
-            "utilization": util,
-            "processed_count": m.processed_count}
-
-    result["bottleneck"] = {
-        "top_3": sorted(bottleneck_data.items(),
-                        key=lambda kv: kv[1]["utilization"],
-                        reverse=True)[:3],
-        "all": bottleneck_data
-    }
-    return result
+    return throughput, avg_wip
 
 
-# -------------------------------------------------------------------------
-# Simulation configuration and runner classes
-# -------------------------------------------------------------------------
-
-
-class SimulationConfig:
-    def __init__(self,
-                 post_loading_cap,
-                 post_conveyor_cap,
-                 post_washing_cap,
-                 pre_press1_cap,
-                 pre_press2_cap,
-                 post_press12_cap,
-                 runs=5,
-                 warmup=WARMUP_SECONDS,
-                 sim_time=SIM_TIME,
-                 seed_base=RANDOM_SEED):
-        self.post_loading_cap = int(post_loading_cap)
-        self.post_conveyor_cap = int(post_conveyor_cap)
-        self.post_washing_cap = int(post_washing_cap)
-        self.pre_press1_cap = int(pre_press1_cap)
-        self.pre_press2_cap = int(pre_press2_cap)
-        self.post_press12_cap = int(post_press12_cap)
-        self.runs = runs
-        self.warmup = warmup
-        self.sim_time = sim_time
-        self.seed_base = seed_base
-
-    def to_buffer_dict(self):
-        return {
-            "post_loading_cap": self.post_loading_cap,
-            "post_conveyor_cap": self.post_conveyor_cap,
-            "post_washing_cap": self.post_washing_cap,
-            "pre_press1_cap": self.pre_press1_cap,
-            "pre_press2_cap": self.pre_press2_cap,
-            "post_press12_cap": self.post_press12_cap,
-        }
-
-
-class SimulationRunner:
-    def __init__(self, config: SimulationConfig):
-        self.config = config
-
-    def single_run(self, seed_offset):
-        seed = self.config.seed_base + seed_offset
-        res = run_simulation_with_capacities(
-            seed=seed,
-            post_loading_cap=self.config.post_loading_cap,
-            post_conveyor_cap=self.config.post_conveyor_cap,
-            post_washing_cap=self.config.post_washing_cap,
-            pre_press1_cap=self.config.pre_press1_cap,
-            pre_press2_cap=self.config.pre_press2_cap,
-            post_press12_cap=self.config.post_press12_cap,
-            warmup=self.config.warmup,
-            measure_until=self.config.sim_time
-        )
-        return res
-
-    def run_replications(self):
-        throughputs = []
-        wips = []
-        for i in range(self.config.runs):
-            res = self.single_run(i)
-            throughputs.append(res["overall"]["throughput"])
-            wips.append(res["overall"]["wip"])
-        return self.aggregate_results(throughputs, wips)
-
-    @staticmethod
-    def aggregate_results(throughputs, wips):
-        mean_throughput = statistics.mean(throughputs) if throughputs else 0.0
-        mean_wip = statistics.mean(wips) if wips else 0.0
-        return {"throughput": mean_throughput, "wip": mean_wip}
-
-    def compute_objectives(self):
-        agg = self.run_replications()
-        # Objectives for MOO:
-        # f1 = -throughput (to maximize throughput)
-        # f2 = wip (to minimize WIP)
-        f1 = -agg["throughput"]
-        f2 = agg["wip"]
-        return np.array([f1, f2], dtype=float)
-
-
-# -------------------------------------------------------------------------
-# pymoo Problem definition
-# -------------------------------------------------------------------------
+# ----------------- MOO Problem Definition -----------------
 
 
 class BufferCapacityProblem(Problem):
     def __init__(self,
-                 runs_per_individual=5,
+                 n_buffers=6,
+                 n_seeds=5,
                  warmup=WARMUP_SECONDS,
-                 sim_time=SIM_TIME,
-                 seed_base=RANDOM_SEED):
+                 measure_until=MEASURE_UNTIL):
         super().__init__(
-            n_var=6,
+            n_var=n_buffers,
             n_obj=2,
             n_constr=0,
-            xl=np.array([1, 1, 1, 1, 1, 1]),
-            xu=np.array([3, 3, 3, 3, 3, 3]),
+            xl=np.array([1] * n_buffers),
+            xu=np.array([4] * n_buffers),
             type_var=int
         )
-        self.runs_per_individual = runs_per_individual
+        self.n_seeds = n_seeds
         self.warmup = warmup
-        self.sim_time = sim_time
-        self.seed_base = seed_base
+        self.measure_until = measure_until
 
     def _evaluate(self, X, out, *args, **kwargs):
-        n = X.shape[0]
-        F = np.zeros((n, self.n_obj))
-        for i in range(n):
-            caps = X[i, :]
-            cfg = SimulationConfig(
-                post_loading_cap=caps[0],
-                post_conveyor_cap=caps[1],
-                post_washing_cap=caps[2],
-                pre_press1_cap=caps[3],
-                pre_press2_cap=caps[4],
-                post_press12_cap=caps[5],
-                runs=self.runs_per_individual,
-                warmup=self.warmup,
-                sim_time=self.sim_time,
-                seed_base=self.seed_base
-            )
-            runner = SimulationRunner(cfg)
-            F[i, :] = runner.compute_objectives()
+        n_individuals = X.shape[0]
+        F = np.zeros((n_individuals, self.n_obj))
+
+        for i in range(n_individuals):
+            caps = X[i, :].astype(int).tolist()
+            throughputs = []
+            wips = []
+            for r in range(self.n_seeds):
+                seed = RANDOM_SEED + r
+                th, wip = run_simulation_with_capacities(
+                    seed=seed,
+                    caps=caps,
+                    warmup=self.warmup,
+                    measure_until=self.measure_until
+                )
+                throughputs.append(th)
+                wips.append(wip)
+
+            mean_throughput = statistics.mean(throughputs)
+            mean_wip = statistics.mean(wips)
+
+            # Objectives: maximize throughput, minimize wip
+            # Pymoo minimizes, so use negative throughput
+            F[i, 0] = -mean_throughput
+            F[i, 1] = mean_wip
+
         out["F"] = F
 
 
-# -------------------------------------------------------------------------
-# Callback to print generation number
-# -------------------------------------------------------------------------
+# ----------------- Callback for generation printing -----------------
 
 
 class GenerationPrinter(Callback):
@@ -618,118 +490,51 @@ class GenerationPrinter(Callback):
 
     def notify(self, algorithm):
         self.n_gen = algorithm.n_gen
-        print(f"Running generation {self.n_gen}")
+        print(f"Generation {self.n_gen}")
 
 
-# -------------------------------------------------------------------------
-# Main MOO optimization routine using NSGA-II
-# -------------------------------------------------------------------------
+# ----------------- Main Optimization Routine -----------------
 
 
-def run_moo_optimization(
-        runs_per_individual=5,
-        n_generations=10,
-        population_size=20,
-        warmup=WARMUP_SECONDS,
-        sim_time=SIM_TIME,
-        seed_base=RANDOM_SEED):
+def run_moo_optimization():
     problem = BufferCapacityProblem(
-        runs_per_individual=runs_per_individual,
-        warmup=warmup,
-        sim_time=sim_time,
-        seed_base=seed_base
+        n_buffers=6,
+        n_seeds=3  # adjust for more robust statistics vs. runtime
     )
 
-    sampling = IntegerRandomSampling()
-    crossover = SBX(eta=15, prob=0.9)
-    mutation = PM(eta=20)
     algorithm = NSGA2(
-        pop_size=population_size,
-        sampling=sampling,
-        crossover=crossover,
-        mutation=mutation,
+        pop_size=20,
+        sampling=IntegerRandomSampling(),
+        crossover=TwoPointCrossover(),
+        mutation=PolynomialMutation(eta=20),
         eliminate_duplicates=True
     )
+
+    termination = get_termination("n_gen", 30)
 
     callback = GenerationPrinter()
 
     res = minimize(
         problem,
         algorithm,
-        ("n_gen", n_generations),
+        termination,
         callback=callback,
         verbose=False
     )
 
-    # Extract Pareto set (capacities and KPIs)
+    # Extract Pareto-optimal configurations
     pareto_X = res.X
     pareto_F = res.F
 
-    pareto_solutions = []
-    for x, f in zip(pareto_X, pareto_F):
-        capacities = {
-            "PostLoadingBuffer": int(x[0]),
-            "PostConveyorBuffer": int(x[1]),
-            "PostWashingBuffer": int(x[2]),
-            "PrePress1Buffer": int(x[3]),
-            "PrePress2Buffer": int(x[4]),
-            "PostPress12Buffer": int(x[5]),
-        }
-        throughput = -float(f[0])
-        wip = float(f[1])
-        pareto_solutions.append({
-            "capacities": capacities,
-            "throughput": throughput,
-            "wip": wip
-        })
+    print("\nOptimized buffer configurations (Pareto front):")
+    for i in range(pareto_X.shape[0]):
+        caps = pareto_X[i, :].astype(int).tolist()
+        neg_th, wip = pareto_F[i, :]
+        th = -neg_th
+        print(f"Config {i + 1}: capacities={caps}, throughput={th:.3f} parts/hour, wip={wip:.3f}")
 
-    # Example preference: select solution with best throughput / wip tradeoff
-    # Here we simply choose the solution with maximum throughput among Pareto set
-    best_idx = int(np.argmax([s["throughput"] for s in pareto_solutions]))
-    best_solution = pareto_solutions[best_idx]
-
-    print("\nPareto-optimal solutions (capacities, throughput, wip):")
-    for s in pareto_solutions:
-        print(s)
-
-    print("\nSelected preferred solution:")
-    print(best_solution)
-
-    return pareto_solutions, best_solution
-
-
-# -------------------------------------------------------------------------
-# Example of using the optimized configuration in the main simulation
-# -------------------------------------------------------------------------
-
-
-def main():
-    pareto_solutions, best_solution = run_moo_optimization(
-        runs_per_individual=3,
-        n_generations=5,
-        population_size=10
-    )
-
-    best_caps = best_solution["capacities"]
-
-    print("\nRunning main simulation with best found capacities...")
-    res = run_simulation_with_capacities(
-        seed=RANDOM_SEED,
-        post_loading_cap=best_caps["PostLoadingBuffer"],
-        post_conveyor_cap=best_caps["PostConveyorBuffer"],
-        post_washing_cap=best_caps["PostWashingBuffer"],
-        pre_press1_cap=best_caps["PrePress1Buffer"],
-        pre_press2_cap=best_caps["PrePress2Buffer"],
-        post_press12_cap=best_caps["PostPress12Buffer"],
-        warmup=WARMUP_SECONDS,
-        measure_until=SIM_TIME
-    )
-
-    print("\nMain simulation KPIs with optimized capacities:")
-    print(f"Throughput = {res['overall']['throughput']:.2f} parts/hour")
-    print(f"WIP = {res['overall']['wip']:.2f} parts")
-    print(f"Produced parts = {res['overall']['produced_parts']}")
+    return res
 
 
 if __name__ == "__main__":
-    main()
+    run_moo_optimization()
