@@ -11,8 +11,17 @@ data = {
     ]
     }
 
+data2 = {
+    'instructions': 
+    [
+        {'PostLoadingBuffer': 1, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 3, 'PrePress1Buffer': 3, 'PrePress2Buffer': 2, 'PostPress12Buffer': 3, 'throughput': 27.24404761904762, 'wip': 16.16483134920635}, 
+        {'PostLoadingBuffer': 2, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 2, 'PrePress1Buffer': 3, 'PrePress2Buffer': 2, 'PostPress12Buffer': 2, 'throughput': 27.23809523809524, 'wip': 16.01919642857143}, 
+        {'PostLoadingBuffer': 1, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 2, 'PrePress1Buffer': 2, 'PrePress2Buffer': 2, 'PostPress12Buffer': 2, 'throughput': 27.154761904761905, 'wip': 13.998561507936508}
+    ]
+    }
 
-def json_to_csv_flexible(json_data, filename="suggested_improvements.csv"):
+
+def json_to_csv(json_data, filename="suggested_improvements.csv"):
     try:
         # 1. Dynamically find the key that holds the list (e.g., 'instructions')
         # This takes the first key it finds in the dictionary
@@ -33,4 +42,4 @@ def json_to_csv_flexible(json_data, filename="suggested_improvements.csv"):
         print(f"❌ Error converting JSON to CSV: {e}")
 
 # Usage
-json_to_csv_flexible(data)
+json_to_csv(data2)

@@ -20,33 +20,31 @@ class Modeloptimizer:
         print("\nOptimizer activated:")
         path = Path("results")
         
-        
+        # Let the user choose the two objectives for the MOO algorithm and their corresponding optimization directions
         selected_objectives, directions = self._choose_objectives()
         objectives = f" {selected_objectives[0]} ({directions[0]}) and {selected_objectives[1]} ({directions[1]})"
 
-        #Generate UML diagram for the MOO algorithm
-        
+        # Let the user specify the input variables for the MOO algorithm, their ranges, and whether they are discrete or continuous
         input_variables = input("What are the input variables that can be changed in the model? (e.g. buffer sizes, processing times, etc.) Please specify the range of values, and if the variable is discrete or continuous, for each variable as well. (e.g. Buffer 1 on the range [1,10] (discrete variable), buffer 2 on the range [1,10] (discrete variable) etc.) ")
         
-        
+        # Let the user choose the MOO algorithm to use, the population size, and the number of generations for the MOO algorithm
+        algorithm = input("Which MOO algorithm would you like to use? (e.g. NSGA-II, MOEA/D, AGEMOEA etc.) ")
+        population_size = input("What population size would you like to use for the MOO algorithm? (e.g. 100) ")
+        generations = input("How many generations should the MOO algorithm run for? (e.g. 50) ")
+
+        #Generate UML diagram for the MOO algorithm
+        print("Generating UML diagram for the MOO algorithm...")
         UML_diagram = self._generate_UML(model_code, objectives, input_variables)
-
-        mmd_path = os.path.join(path, "UML.mmd")
-        png_path = os.path.join(path, "UML.png")
-        with open(mmd_path, "w", encoding="utf-8") as f:
-            f.write(UML_diagram)
-        render_mermaid_to_png(mmd_path, png_path)
+        self.save_UML(UML_diagram, path)
         
-
-
         #Generate MOO code
-        print("generating MOO code...")
-        MOO_code = self._generate_code(model_code, objectives, input_variables, UML_diagram)
+        print("Generating MOO code...")
+        MOO_code = self._generate_code(model_code, objectives, input_variables, UML_diagram, algorithm, population_size, generations)
         clean_initial_MOO_code = remove_code_wrappers(MOO_code)
         save_model(clean_initial_MOO_code, path, "MOO_initial_code.py")
 
-        #Combine the MOO code with the existing code
-        print("Combining the MOO code with the existing code...")
+        #Combine the MOO code with the simulation code
+        print("Combining the MOO code with the simulation code...")
         combined_code = self._combiner(model_code, MOO_code, selected_objectives)
         clean_initial_combined_model = remove_code_wrappers(combined_code)
         save_model(clean_initial_combined_model, path, "initial_combined_code.py")
@@ -56,24 +54,49 @@ class Modeloptimizer:
 
         #Extract Pareto-optimal solutions from the MOO results
         pareto_solutions = self._find_pareto_front(selected_objectives, directions)
-
-        
-    
+        print("See the results of the MOO algorithm in 'moo_simulation_results.csv'")
+        print("And the pareto optimal solutions here: 'moo_pareto_solutions.csv'")
+   
         #Ask the user for their priorities and suggest improvements based on the Pareto-optimal solutions
         user_input = input("What are your current priorities for the production system? (e.g. prioritize high throughput, minimize energy consumption, etc.) ")
-        print("Generating suggestions for improvements based on the Pareto-optimal solutions...")
-        suggestions = self._suggest_improvements(model_code, user_input, pareto_solutions)
 
+        #Generate suggestions for improvements based on the Pareto-optimal solutions and the user's priorities
+        print("Generating suggestions for improvements based on the Pareto-optimal solutions and user input...")
+        suggestions = self._suggest_improvements(model_code, user_input, pareto_solutions)
 
         #visualize the results
         self.json_to_csv(suggestions)
         self.visualize_MOO_results(selected_objectives)
 
+        print(suggestions)
+
+        explanation = self._explain_suggestions(suggestions, pareto_solutions, model_code)
+
+        print(explanation)
+
         return suggestions
     
 
+    def _explain_suggestions(self, suggestions, pareto_solutions, model_code,
+        model = "gpt-5-mini"):
+        prompt = (
+            "You are an AI assistant that explains suggestions for improving a production system. "
+            "The suggestions are based on the results of a multi-objective optimization (MOO) analysis, and are provided in a json format. "
+            "Please explain the reasoning behind these suggestions in a way that is understandable for a human production manager. "
+            f"Here is my Python code:\n\n```python\n {model_code}\n```\n\n"
+            f"Here are the results of the MOO analysis from which the suggestions are derived: \n\n {pareto_solutions}\n"
+            f"Here are the suggestions in a json format:\n\n {suggestions}\n"
+            "Please provide a clear, concise and short explanation for each suggestion, focusing on how it will improve the production system based on the MOO results and the user's priorities."
+        )
+        resp = self.client.chat.completions.create(
+            model=model, 
+            messages=[{"role": "user", "content": prompt}]) 
+        return resp.choices[0].message.content
+                             
 
-    def _suggest_improvements(self, model_code, user_input, MOO_pareto_csv,
+
+
+    def _suggest_improvements(self, model_code, user_input, pareto_solutions,
         model = "gpt-5-mini",
         response_format={"type": "json_object"}):
         prompt = (
@@ -82,13 +105,12 @@ class Modeloptimizer:
                 "Choose three datapoints on the provided pareto fron and suggest specific, implementable instructions to improve the system based on those datapoints. "
                 f"When choosing the datapoints, consider the these instructions from the perspective of a production manager: \n {user_input}\n"
                 "Based on the three datapoints you choose, suggest specific, implementable instructions to improve the system. "
-                "These should be short and concise statements, e.g. Increase the buffer size of buffer_1 to 8. buffer_2 to 10... etc. "
                 "They should be easily implementable with the existing model. "
                 f"Here is my Python code:\n\n```python\n {model_code}\n```\n\n"
-                f"Here are the results of the MOO analysis:\n\n {MOO_pareto_csv}\n"
+                f"Here are the results of the MOO analysis:\n\n {pareto_solutions}\n"
                 "Only answer with the instructions in a json format."
                 "The instructions should only contain the input variable settings and corresponding objectives values, no explanations"
-                "The json format should be like this: { 'instructions': [ {'PostLoadingBuffer': 1, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 1, 'PrePress1Buffer': 1, 'PrePress2Buffer': 1, 'PostPress12Buffer': 1, 'throughput': 28.114285714285717, 'wip': 10.779661016949152}, {'PostLoadingBuffer': 1, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 1, 'PrePress1Buffer': 1, 'PrePress2Buffer': 3, 'PostPress12Buffer': 1, 'throughput': 30.17142857142857, 'wip': 12.836158192090396}] }"
+                "The json format should be like this, though the variable names and values should be chosen from the MOO results: { 'instructions': [ {'PostLoadingBuffer': 1, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 1, 'PrePress1Buffer': 1, 'PrePress2Buffer': 1, 'PostPress12Buffer': 1, 'throughput': 28.114285714285717, 'wip': 10.779661016949152}, {'PostLoadingBuffer': 1, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 1, 'PrePress1Buffer': 1, 'PrePress2Buffer': 3, 'PostPress12Buffer': 1, 'throughput': 30.17142857142857, 'wip': 12.836158192090396}] }"
                 "Make sure to only output the json object and nothing else. No explanations, no markdown fences."
                 )
         
@@ -113,8 +135,9 @@ class Modeloptimizer:
                 "Please generate a UML digram of an MOO algorithm that will optimize the following simulation"
                 "Your UML diagram should be focused on how the MOO algorithm will interact with the existing code, and how it will optimize it. "
                 f"Here is my Python code:\n\n```python\n {model_code}\n```\n\n"
-                f"Objectives: {objectives}\n"
+                f"MOO objectives: {objectives}\n"
                 f"Input Variables: {input_variables}\n"
+                "Keep the UML diagram simple and understandable for a human production manager"
 
                  "HARD REQUIREMENTS:\n"
                 "1) Output ONLY Mermaid code: no markdown fences, no ```python blocks, no explanations.\n"
@@ -140,20 +163,20 @@ class Modeloptimizer:
         except Exception as e:
             raise
 
-    def _generate_code(self, model_code, objectives, input_variables, UMLmmd,
-             model ="gpt-5.1"):
+    def _generate_code(self, model_code, objectives, input_variables, UMLmmd, algorithm, population_size, generations,
+            model ="gpt-5.1"):
             prompt = (
                  "You are an AI assistant that generates code for a multi-objective optimization (MOO) algorithm"
                  "Your task is to generate an MOO algorithm that optimizes a production line simulation model in Python."
                  f"This is the Python simulation model:\n\n```python\n {model_code}\n```\n\n"
                  f"These are the target objectives of the MOO algorithm: {objectives}\n"
                  f"These are the input variables for the MOO algorithm that can be adjusted: {input_variables}\n"
-                 "The MOO algortihm are to be written in python using the pymoo library. "
+                 f"Use the {algorithm} algorithm for the MOO, with a population size of {population_size} and {generations} generations. "
+                 "The MOO algortihm is to be written in python using the pymoo library. "
                  f"use the UML mmd {UMLmmd} file as guidence to how to implement you MOO algorithm"
-                 "Make the MOO algorithm print what generation is currently running when the code is executed, to let the user know that the code is running and not frozen. "
                  "only output the code, no explanations, no markdown fences"
                  "make sure that the MOO code is compatible with the existing simulation code, and that it can be easily integrated with the existing code"
-                 ""
+                 
             )
             resp = self.client.chat.completions.create(
                 model=model, 
@@ -248,7 +271,7 @@ class Modeloptimizer:
                         
                         # Check if they already picked this
                         if metric_name in selected_objectives:
-                            print(f"❌ '{metric_name}' is already selected. Please pick a different objective.")
+                            print(f"'{metric_name}' is already selected. Please pick a different objective.")
                             continue
                         
                         # Ask for Direction
@@ -262,12 +285,12 @@ class Modeloptimizer:
                         selected_objectives.append(metric_name)
                         directions.append(direction)
                         
-                        print(f"✅ Slot {i} set to: {direction.upper()} {metric_name}")
+                        print(f"Slot {i} set to: {direction.upper()} {metric_name}")
                         break  # Exit inner while loop, move to next 'i' in for loop
                     else:
-                        print("❌ Invalid selection. Out of range.")
+                        print("Invalid selection. Out of range.")
                 except ValueError:
-                    print("❌ Please enter a numerical value.")
+                    print("Please enter a numerical value.")
 
         print(f"\nFinal configuration: {selected_objectives[0]} ({directions[0]}) vs {selected_objectives[1]} ({directions[1]})")
         return selected_objectives, directions
@@ -301,12 +324,14 @@ class Modeloptimizer:
 
         while attempt < max_attempts:
             print(f"Inspecting code (Attempt {attempt + 1})...")
-            # We pass the error_message if it exists
+
+            # pass the error_message if it exists
             code = self._inspector(code, objectives, input_variables, error_message)
             code = remove_code_wrappers(code)
             save_model(code, path, "checked_initial_combined_code.py")
 
-            input("Please review the code manually: 'results/checked_initial_combined_code.py'.")
+            input("Please review the code manually: 'results/checked_initial_combined_code.py'. Make changes if necessary. Press enter to run the MOO algorithm.")
+
             print("Running the MOO algorithm...")
             #read the code again after manual review
             with open(os.path.join(path, "checked_initial_combined_code.py"), "r") as f:
@@ -316,17 +341,17 @@ class Modeloptimizer:
                 # Assuming run_python_code raises an Exception on failure
                 # or returns a result indicating failure.
                 _ = run_python_code(code)
-                print("✅ Run successful!")
-                break # Exit the loop on success
+                print("Run successful!")
+                break 
             except Exception as e:
                 error_message = str(e)
                 print(f"Attempt {attempt + 1} failed, this is the error message: {error_message}, repairing code...")
                 attempt += 1
                 if attempt == max_attempts:
-                    print("Maximum fix attempts reached. Please check the code manually.")
+                    print("Maximum fix attempts reached. Please fix the code manually.")
                     return None
                 
-    def json_to_csv(json_data, filename="suggested_improvements.csv"):
+    def json_to_csv(self, json_data, filename="suggested_improvements.csv"):
         try:
             # 1. Dynamically find the key that holds the list (e.g., 'instructions')
             # This takes the first key it finds in the dictionary
@@ -340,19 +365,18 @@ class Modeloptimizer:
             # 3. Save to the main folder
             df.to_csv(filename, index=False)
             
-            print(f"✅ Successfully saved {len(df)} datapoints to '{filename}'")
-            print(f"Columns identified: {list(df.columns)}")
+            print(f"Successfully saved {len(df)} datapoints to '{filename}'")
+            #print(f"Columns identified: {list(df.columns)}")
             
         except Exception as e:
-            print(f"❌ Error converting JSON to CSV: {e}")
+            print(f"Error converting JSON to CSV: {e}")
 
     def visualize_MOO_results(self, selected_objectives):
         
-        # Load your data
+        # Load data
         df = pd.read_csv("moo_simulation_results.csv")
         df['Type'] = 'Standard Solution'
 
-        # If you want to include the Pareto solutions in the same interactive plot:
         df2 = pd.read_csv("moo_pareto_solutions.csv")
         df2['Type'] = 'Pareto Optimal'
 
@@ -364,7 +388,7 @@ class Modeloptimizer:
 
         hover_cols = [col for col in combined_df.columns if col not in selected_objectives and col != 'Type']
         
-        # Create the interactive scatter plot
+        # Create interactive scatter plot
         fig = px.scatter(
             combined_df, 
             x=selected_objectives[0], 
@@ -383,3 +407,11 @@ class Modeloptimizer:
         fig.update_traces(marker=dict(size=10, opacity=0.8, line=dict(width=1, color='DarkGrey')))
         
         fig.show()
+
+    def save_UML(self, UML_diagram, path):
+
+        mmd_path = os.path.join(path, "UML.mmd")
+        png_path = os.path.join(path, "UML.png")
+        with open(mmd_path, "w", encoding="utf-8") as f:
+            f.write(UML_diagram)
+        render_mermaid_to_png(mmd_path, png_path)

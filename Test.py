@@ -1,4 +1,5 @@
 
+import json
 import os
 from pathlib import Path
 from helpers.runner import run_python_code
@@ -11,59 +12,46 @@ load_dotenv()
 api_key= os.getenv("OPENAI_KEY")
 client = OpenAI(api_key=api_key)
 
-def test_objective_selection():
-    possible_metrics = ["WIP", "Throughput", "Energy Consumption"]
-    selected_objectives = []
-    directions = []
+def _suggest_improvements(client, model_code, user_input, pareto_solutions,
+        model = "gpt-5-mini",
+        response_format={"type": "json_object"}):
+        prompt = (
+                "You are an AI assistant that suggests improvements to a production system based on the results of a multi-objective optimization (MOO) analysis. "
+                "The improvements should be based on the results of a MOO analysis, which are provided in a csv format. "
+                "Choose three datapoints on the provided pareto fron and suggest specific, implementable instructions to improve the system based on those datapoints. "
+                f"When choosing the datapoints, consider the these instructions from the perspective of a production manager: \n {user_input}\n"
+                "Based on the three datapoints you choose, suggest specific, implementable instructions to improve the system. "
+                "They should be easily implementable with the existing model. "
+                f"Here is my Python code:\n\n```python\n {model_code}\n```\n\n"
+                f"Here are the results of the MOO analysis:\n\n {pareto_solutions}\n"
+                "Only answer with the instructions in a json format."
+                "The instructions should only contain the input variable settings and corresponding objectives values, no explanations"
+                "The json format should be like this, though the variable names and values should be chosen from the MOO results: { 'instructions': [ {'PostLoadingBuffer': 1, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 1, 'PrePress1Buffer': 1, 'PrePress2Buffer': 1, 'PostPress12Buffer': 1, 'throughput': 28.114285714285717, 'wip': 10.779661016949152}, {'PostLoadingBuffer': 1, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 1, 'PrePress1Buffer': 1, 'PrePress2Buffer': 3, 'PostPress12Buffer': 1, 'throughput': 30.17142857142857, 'wip': 12.836158192090396}] }"
+                "Make sure to only output the json object and nothing else. No explanations, no markdown fences."
+                )
+        
+        resp = client.chat.completions.create(
+            model=model,
+            response_format = response_format, 
+            messages=[{"role": "user", "content": prompt}])
+        try:
+            operator_output = resp.choices[0].message.content.strip()
+            instructions_json = json.loads(operator_output)
+            return instructions_json
+        except Exception as e:
+            raise
 
-    print("\n--- Objective Selection ---")
-    print("You need to select 2 objectives to perform Multi-Objective Optimization.")
+code_path = os.path.join("results", "initial_model.py")
+# 2. Open and read the file
+with open(code_path, "r") as file:
+    model_code = file.read()
 
-    for i in range(1, 3):  # Runs twice: once for i=1, once for i=2
-        while True:  # Inner loop to handle invalid input for this specific slot
-            print(f"\nSelect Objective #{i}:")
-            for idx, metric in enumerate(possible_metrics, 1):
-                print(f"{idx}. {metric}")
-            
-            choice = input(f"Enter number (1-{len(possible_metrics)}): ")
-            
-            try:
-                m_idx = int(choice) - 1
-                if 0 <= m_idx < len(possible_metrics):
-                    metric_name = possible_metrics[m_idx]
-                    
-                    # Check if they already picked this
-                    if metric_name in selected_objectives:
-                        print(f"❌ '{metric_name}' is already selected. Please pick a different objective.")
-                        continue
-                    
-                    # Ask for Direction
-                    print(f"How should we optimize '{metric_name}'?")
-                    print("1. Minimize")
-                    print("2. Maximize")
-                    dir_choice = input("Choice (1 or 2): ")
-                    direction = "min" if dir_choice == "1" else "max"
-                    
-                    # Store results
-                    selected_objectives.append(metric_name)
-                    directions.append(direction)
-                    
-                    print(f"✅ Slot {i} set to: {direction.upper()} {metric_name}")
-                    break  # Exit inner while loop, move to next 'i' in for loop
-                else:
-                    print("❌ Invalid selection. Out of range.")
-            except ValueError:
-                print("❌ Please enter a numerical value.")
+MOO_pareto_csv_path = Path("moo_pareto_solutions.csv")
+with open(MOO_pareto_csv_path, "r") as file:
+    pareto_solution = file.read()
 
-    print(f"\nFinal configuration: {selected_objectives[0]} ({directions[0]}) vs {selected_objectives[1]} ({directions[1]})")
-    return selected_objectives, directions
-
-
-selected_objectives, directions = test_objective_selection()
-objectives = [f"{dir.upper()} {obj}" for dir, obj in zip(directions, selected_objectives)]
-print(f"Selected Objectives: {selected_objectives} with directions {directions}")
-print(f"objectives: {objectives}")
-
+suggestions = _suggest_improvements(client, model_code, user_input="prioritize high throughput", pareto_solutions = pareto_solution)
+print(suggestions)
 
 """
 optimizer = Modeloptimizer(client)
