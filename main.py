@@ -83,6 +83,8 @@ def main() -> None:
     kpi_original = retrieve_KPIs(clean_initial_model, "Original model")
 
     #FIXA EN BÄTTRE INSPECTOR FUNCTION HÄR
+    
+
 
     results = []
     results.append(kpi_original)

@@ -1,5 +1,7 @@
 import os
+from sys import path
 from helpers.runner import run_python_code
+from agents.inspector import Modelinspector
 import re
 import matplotlib.pyplot as plt
 import numpy as np
@@ -186,3 +188,37 @@ def visualize_results(results, save_path: str | None = None):
         print(f"\nFigure saved to {full_path}")
 
     return fig
+
+def inspect_code(code, client, file_name):
+
+    # Iterative Debugging Loop
+
+    max_attempts = 5
+    attempt = 0
+    error_message = None
+
+    inspector = Modelinspector(client)
+
+    while attempt < max_attempts:
+
+        print(f"Inspecting code (Attempt {attempt + 1})...")
+
+        if attempt > 0:    
+            # pass the error_message if it exists
+            code = inspector._inspect(code, error_message)
+            code = remove_code_wrappers(code)
+        try:
+            # Assuming run_python_code raises an Exception on failure
+            # or returns a result indicating failure.
+            _ = run_python_code(code)
+            print("Run successful! The code is without errors. ")
+            save_model(code, path, file_name)
+
+            break 
+        except Exception as e:
+            error_message = str(e)
+            print(f"Attempt {attempt + 1} failed, this is the error message:\n\n {error_message}\n\n, repairing code...")
+            attempt += 1
+            if attempt == max_attempts:
+                print("Maximum fix attempts reached. Please fix the code manually.")
+                return None
