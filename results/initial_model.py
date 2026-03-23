@@ -5,60 +5,54 @@ from collections import Counter
 
 RANDOM_SEED = 11
 
-SIM_TIME = 691200          # 8 days
-WARMUP_SECONDS = 86400     # 1 day
+SIM_TIME = 691200        # 8 days
+WARMUP_SECONDS = 86400   # 1 day
 MEASURE_UNTIL = SIM_TIME
 
 
 def production_wait_time(now: float) -> float:
     """
-    Compute how long (in seconds) the machine must wait until production is allowed.
-
-    New stop rules (7-day periodic):
-    - Friday 17:00  -> Saturday 07:00
-    - Saturday 17:00 -> Sunday 07:00
+    7-day periodic stop windows:
+    - Friday 17:00 – Saturday 07:00
+    - Saturday 17:00 – Sunday 07:00
     """
     SEC_PER_DAY = 86400
     day = int((now // SEC_PER_DAY) % 7)  # 0=Mon ... 6=Sun
-    time_of_day = now % SEC_PER_DAY
+    t = now % SEC_PER_DAY
 
     def secs(h, m=0, s=0):
         return h * 3600 + m * 60 + s
 
-    # Friday (4): stop 17:00–24:00, then continue on Saturday 00:00–07:00
-    # Saturday (5): stop 17:00–24:00, then continue on Sunday 00:00–07:00
-    if day == 4:  # Friday
-        stop1_start = secs(17)
-        stop1_end = secs(24)
-        if stop1_start <= time_of_day < stop1_end:
-            return max(0.0, stop1_end - time_of_day)
+    # Friday (day=4): stop 17:00–24:00, then continue into Sat 00:00–07:00
+    if day == 4:
+        stop_start = secs(17)
+        stop_end = secs(24)
+        if stop_start <= t < stop_end:
+            return stop_end - t  # pause until midnight (Sat 00:00)
         return 0.0
 
-    if day == 5:  # Saturday
-        # 00:00–07:00 is still the Friday–Saturday block (already handled by previous day),
-        # but since function must be purely local in time, model only Sat 17–24 and Sun 00–07
-        stop1_start = secs(0)
-        stop1_end = secs(7)
-        stop2_start = secs(17)
-        stop2_end = secs(24)
-        if stop1_start <= time_of_day < stop1_end:
-            return max(0.0, stop1_end - time_of_day)
-        if stop2_start <= time_of_day < stop2_end:
-            return max(0.0, stop2_end - time_of_day)
+    # Saturday (day=5): 00:00–07:00 stopped continuing from Fri,
+    #                   07:00–17:00 running,
+    #                   17:00–24:00 stopped again, then Sun 00:00–07:00
+    if day == 5:
+        if t < secs(7):
+            return 0.0  # this portion is already covered by Fri's waiting time
+        if secs(17) <= t < secs(24):
+            return secs(24) - t
         return 0.0
 
-    if day == 6:  # Sunday: 00–07 blocked from Sat, but model only local window 00–07
-        stop_start = secs(0)
-        stop_end = secs(7)
-        if stop_start <= time_of_day < stop_end:
-            return max(0.0, stop_end - time_of_day)
+    # Sunday (day=6): 00:00–07:00 stopped continuing from Sat
+    if day == 6:
+        if t < secs(7):
+            return 0.0  # covered by Sat's waiting
         return 0.0
 
+    # Other days: running 24h
     return 0.0
 
 
 def _has_free_capacity(buf):
-    return (getattr(buf, "free_capacity", None) and buf.free_capacity() > 0) \
+    return getattr(buf, "free_capacity", None) and buf.free_capacity() > 0 \
            or len(buf.items) < buf.capacity
 
 
@@ -67,6 +61,7 @@ def splitter(env, input_store, out1, out2):
     while True:
         part = yield input_store.get()
         first, second = (out1, out2) if toggle == 0 else (out2, out1)
+        # try to alternate but always respect capacity
         if _has_free_capacity(first):
             yield first.put(part)
             toggle ^= 1
@@ -95,12 +90,13 @@ def reset_machine_stats(m):
 
 
 class DelayBuffer:
+    """Single store with a global capacity cap that includes in-transit + ready."""
     def __init__(self, env, cap, delay):
         self.env = env
         self.delay = delay
         self.cap = cap
-        self.store = simpy.Store(env, capacity=cap)
-        self.tokens = simpy.Container(env, init=cap, capacity=cap)
+        self.store = simpy.Store(env, capacity=cap)   # holds 'ready' items
+        self.tokens = simpy.Container(env, init=cap, capacity=cap)  # global slots
         self._in_transit = 0
 
     def put(self, part):
@@ -258,12 +254,7 @@ def run_simulation(seed, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
     random.seed(seed)
     env = simpy.Environment()
 
-    # Raw input and sinks
-    raw_input = simpy.Store(env, capacity=1000)
-    sink = simpy.Store(env, capacity=100000)
-    defects = simpy.Store(env, capacity=100000)
-
-    # Buffers (all capacities explicitly defined)
+    # Buffers (capacities and process times from provided list)
     PostLoadingBuffer = DelayBuffer(env, cap=2, delay=10)
     PostConveyorBuffer = DelayBuffer(env, cap=2, delay=10)
     PostWashingBuffer = DelayBuffer(env, cap=2, delay=10)
@@ -271,12 +262,16 @@ def run_simulation(seed, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
     PrePress2Buffer = DelayBuffer(env, cap=3, delay=32)
     PostPress12Buffer = DelayBuffer(env, cap=3, delay=32)
 
-    # Helper buffer between parallel presses and common PostPress12Buffer
-    press1_out = simpy.Store(env, capacity=3)
-    press2_out = simpy.Store(env, capacity=3)
+    # Raw input and sinks (sources/sinks can be large/unbounded)
+    raw_input = simpy.Store(env, capacity=float('inf'))
+    sink = simpy.Store(env, capacity=float('inf'))
+    defects = simpy.Store(env, capacity=float('inf'))
 
-    # Machines following given routing and station table
-    # Loading robot -> Conveyor belt
+    # Helper stores for splitter/merger, each with defined capacity
+    split_out1 = simpy.Store(env, capacity=3)  # to PrePress1Buffer
+    split_out2 = simpy.Store(env, capacity=3)  # to PrePress2Buffer
+
+    # Machines (times, availability, MTTR, energies from table)
     Loading_robot = Machine(
         env, "Loading robot",
         input_buffer=raw_input,
@@ -288,7 +283,6 @@ def run_simulation(seed, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
         waiting_power=kwh_per_sec(0.25),
     )
 
-    # PostLoadingBuffer -> Conveyor belt -> PostConveyorBuffer
     Conveyor_belt = Machine(
         env, "Conveyor belt",
         input_buffer=PostLoadingBuffer,
@@ -300,7 +294,6 @@ def run_simulation(seed, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
         waiting_power=kwh_per_sec(0.0),
     )
 
-    # Conveyor belt -> Washing machine -> PostWashingBuffer
     Washing_machine = Machine(
         env, "Washing machine",
         input_buffer=PostConveyorBuffer,
@@ -312,11 +305,10 @@ def run_simulation(seed, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
         waiting_power=kwh_per_sec(4.28),
     )
 
-    # Conveyor belt -> Washing machine -> PostWashingBuffer -> Hantering cell
     Hantering_cell = Machine(
         env, "Hantering cell",
         input_buffer=PostWashingBuffer,
-        output_buffer=None,  # will be reassigned to hantering_out for splitting
+        output_buffer=None,  # will be routed via splitter to PrePress buffers
         process_time=25.0,
         availability=97.79,
         mttr=74.0,
@@ -324,19 +316,19 @@ def run_simulation(seed, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
         waiting_power=kwh_per_sec(0.50),
     )
 
-    # After Hantering_cell, split evenly into PrePress1Buffer and PrePress2Buffer
-    # Represent Hantering_cell output as an explicit store for splitting
-    hantering_out = simpy.Store(env, capacity=6)
+    # Connect Hantering cell output to a helper store feeding splitter
+    hantering_out = simpy.Store(env, capacity=6)  # capacity defined
     Hantering_cell.output_buffer = hantering_out
 
-    # Start splitter process for parallel presses
-    env.process(splitter(env, hantering_out, PrePress1Buffer, PrePress2Buffer))
+    # Split evenly to two press pre-buffers via helper stores
+    env.process(splitter(env, hantering_out, split_out1, split_out2))
+    env.process(forwarder(env, split_out1, PrePress1Buffer))
+    env.process(forwarder(env, split_out2, PrePress2Buffer))
 
-    # Hantering cell -> Presses cell 1
     Presses_cell_1 = Machine(
         env, "Presses cell 1",
         input_buffer=PrePress1Buffer,
-        output_buffer=press1_out,
+        output_buffer=PostPress12Buffer,
         process_time=175.0,
         availability=87.79,
         mttr=73.0,
@@ -344,11 +336,10 @@ def run_simulation(seed, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
         waiting_power=kwh_per_sec(1.25),
     )
 
-    # Parallel: Presses cell 2 || Presses cell 1
     Presses_cell_2 = Machine(
         env, "Presses cell 2",
         input_buffer=PrePress2Buffer,
-        output_buffer=press2_out,
+        output_buffer=PostPress12Buffer,
         process_time=176.0,
         availability=87.69,
         mttr=74.0,
@@ -356,10 +347,6 @@ def run_simulation(seed, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
         waiting_power=kwh_per_sec(1.25),
     )
 
-    # Merge parallel presses into common buffer PostPress1&Press2Buffer
-    merger(env, press1_out, press2_out, PostPress12Buffer)
-
-    # Presses cell 2 -> Quality station cell (take from merged flow)
     Quality_station_cell = Machine(
         env, "Quality station cell",
         input_buffer=PostPress12Buffer,
@@ -383,8 +370,10 @@ def run_simulation(seed, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
         Quality_station_cell,
     ]
 
+    # Start part generation
     env.process(part_generator(env, raw_input))
 
+    # Warm-up
     env.run(until=warmup)
 
     for m in machines_list:
@@ -419,11 +408,14 @@ def run_simulation(seed, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
     throughput = (total_produced / hours) if hours > 0 else 0.0
     avg_wip = statistics.mean(wip_samples) if wip_samples else 0.0
 
-    result = {"overall": {
-        "throughput": throughput,
-        "wip": avg_wip,
-        "produced_parts": total_produced},
-        "machine_energy": {}}
+    result = {
+        "overall": {
+            "throughput": throughput,
+            "wip": avg_wip,
+            "produced_parts": total_produced
+        },
+        "machine_energy": {}
+    }
 
     for m in machines_list:
         waiting_energy = m.waiting_energy_consumption()
@@ -434,23 +426,9 @@ def run_simulation(seed, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
             "waiting_time": m.failed_time_total + m.blocked_time,
             "working_energy": working_energy,
             "waiting_energy": waiting_energy,
-            "total_energy": total_energy}
+            "total_energy": total_energy
+        }
 
-    bottleneck_data = {}
-    for m in machines_list:
-        m_th = m.processed_count / hours if hours > 0 else 0.0
-        util = (m.working_time / (measure_until - warmup)) * 100.0 if (measure_until > warmup) else 0.0
-        bottleneck_data[m.name] = {
-            "throughput": m_th,
-            "utilization": util,
-            "processed_count": m.processed_count}
-
-    result["bottleneck"] = {
-        "top_3": sorted(bottleneck_data.items(),
-                        key=lambda kv: kv[1]["utilization"],
-                        reverse=True)[:3],
-        "all": bottleneck_data
-    }
     return result
 
 
@@ -458,32 +436,31 @@ if __name__ == "__main__":
     runs = 10
     overall_results = []
     machine_results = {}
-    bottleneck_results = []
     energy_per_part_list = []
 
     for i in range(runs):
         seed = RANDOM_SEED + i
         res = run_simulation(seed)
         overall_results.append(res["overall"])
-        for machine_name, _data in res["bottleneck"]["top_3"]:
-            bottleneck_results.append(machine_name)
+
         for mname, mdata in res["machine_energy"].items():
             machine_results.setdefault(mname, []).append(mdata)
-        total_energy_run = sum(machine_results[mname][i]["total_energy"] for mname in machine_results)
+
+        total_energy_run = sum(machine_results[mname][i]["total_energy"]
+                               for mname in machine_results)
         total_energy_kwh = total_energy_run
         produced_parts = overall_results[i]["produced_parts"]
-        energy_per_part_list.append(total_energy_kwh / produced_parts if produced_parts > 0 else 0)
+        energy_per_part_list.append(
+            total_energy_kwh / produced_parts if produced_parts > 0 else 0
+        )
 
     mean_energy_per_part = statistics.mean(energy_per_part_list)
-    mean_overall = {"throughput": statistics.mean(o["throughput"] for o in overall_results),
-                    "wip": statistics.mean(o["wip"] for o in overall_results)}
+    mean_overall = {
+        "throughput": statistics.mean(o["throughput"] for o in overall_results),
+        "wip": statistics.mean(o["wip"] for o in overall_results)
+    }
 
     print(f"\n=== Mean Overall KPIs over {runs} runs ===")
     print(f"Throughput = {mean_overall['throughput']:.2f} parts/hour")
     print(f"WIP = {mean_overall['wip']:.2f} parts")
     print(f"Mean Energy Consumption per Part = {mean_energy_per_part:.4f} kWh/part")
-
-    bottleneck_counter = Counter(bottleneck_results)
-    print("\n=== Bottleneck Frequency over runs ===")
-    for machine, count in bottleneck_counter.items():
-        print(f"{machine}: {count} times")

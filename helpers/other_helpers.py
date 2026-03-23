@@ -14,18 +14,9 @@ def save_model(model_content, save_path, filename):
 def retrieve_KPIs(code, modelinfo: str):
     original_output = run_python_code(code).splitlines()
     kpi_section = [f"----Results from model: {modelinfo}"]
-    bottleneck_section = []
-    in_bottleneck_block = False
     for line in original_output:
-        if "=== Bottleneck Frequency over runs ===" in line:
-            in_bottleneck_block = True
-            bottleneck_section.append(line)
-            continue
-        if in_bottleneck_block:
-            bottleneck_section.append(line)
-            continue
         kpi_section.append(line)
-    return kpi_section, bottleneck_section
+    return kpi_section
 
 def remove_code_wrappers(code):
     code = code.strip()
@@ -195,18 +186,3 @@ def visualize_results(results, save_path: str | None = None):
         print(f"\nFigure saved to {full_path}")
 
     return fig
-
-
-"""
-def _run_MOO():
-    return
-
-
-def _visualize_MOO_results():
-    fig = plt.figure(figsize=(8, 6))
-    plt.title("Pareto Front of MOO Solutions")
-    return fig
-    
-def _select_pareto_optimal_solutions():
-    return
-"""

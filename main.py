@@ -29,7 +29,7 @@ final_path = Path("results")
 buffers_info_specific = "PostLoadingBuffer(Capacity = 2, processtime = 10), PostConveyorBuffer(Capacity = 2, processtime = 10), PostWashingBuffer(Capacity = 2, processtime = 10), PrePress1Buffer(Capacity = 3, processtime = 32), PrePress2Buffer(Capacity = 3, processtime = 32), " \
 "PostPress1&Press2Buffer(Capacity = 3, processtime = 32)"
 defect_info = "Defect rate = 0.089, defect sink = defect,initiated at Qualitystation"
-cpd_info ="1. The presses need to have a processtime of at least 60s. 2. All buffer capacities musst be kept at the same original level. "
+cpd_info ="1. The presses need to have a processtime of at least 60s. 2. " # All buffer capacities musst be kept at the same original level.
 
 def main() -> None:
     df_raw = eventlog.load(file_path_eventlog)
@@ -77,20 +77,24 @@ def main() -> None:
     render_mermaid_to_png(mmd_path, png_path)
     print(f"Flow chart saved to: {png_path}")
 
-    kpi_original, bottleneck_original = retrieve_KPIs(clean_initial_model, "Original model")
+
+    print("Evaluating initial model...")
+
+    kpi_original = retrieve_KPIs(clean_initial_model, "Original model")
+
+    #FIXA EN BÄTTRE INSPECTOR FUNCTION HÄR
+
     results = []
     results.append(kpi_original)
     print(kpi_original)
-    print(bottleneck_original)
 
     optimizer = Modeloptimizer(client)
     suggestions = optimizer.optimize(
         model_code = clean_initial_model,
-        bottlenecks= bottleneck_original
     )
     
-
-    print(suggestions)
+    
+    print("back in main.py")
 
     if isinstance(suggestions, dict):
         step_list = suggestions.get("instructions", [])
@@ -110,7 +114,7 @@ def main() -> None:
     
     for idx, step in enumerate(step_list, start=1):
         adaptor = Modeladaptor(client)
-        kpi_adapted_model, bottleneck_adapted_model = adaptor.adapter(original_code = clean_initial_model, instruction=step, final_path=final_path, multi_agent_setting= False, index_model= idx)
+        kpi_adapted_model = adaptor.adapter(original_code = clean_initial_model, instruction=step, final_path=final_path, multi_agent_setting= False, index_model= idx)
         print(kpi_adapted_model) # Append each adapted model's KPIs to results
         results.append(kpi_adapted_model)
 

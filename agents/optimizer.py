@@ -8,7 +8,6 @@ from helpers.mermaid_renderer import render_mermaid_to_png
 from helpers.runner import run_python_code
 from paretoset import paretoset
 import pandas as pd
-import matplotlib.pyplot as plt
 import plotly.express as px
 
 
@@ -31,6 +30,8 @@ class Modeloptimizer:
         algorithm = input("Which MOO algorithm would you like to use? (e.g. NSGA-II, MOEA/D, AGEMOEA etc.) ")
         population_size = input("What population size would you like to use for the MOO algorithm? (e.g. 100) ")
         generations = input("How many generations should the MOO algorithm run for? (e.g. 50) ")
+        SIM_TIME = input("How long should the simulation run for in seconds? (e.g. 10000) ")
+        WARMUP_SECONDS = input("How long should the warmup period be for the simulation in seconds? (e.g. 100) ")
 
         #Generate UML diagram for the MOO algorithm
         print("Generating UML diagram for the MOO algorithm...")
@@ -45,7 +46,7 @@ class Modeloptimizer:
 
         #Combine the MOO code with the simulation code
         print("Combining the MOO code with the simulation code...")
-        combined_code = self._combiner(model_code, MOO_code, selected_objectives)
+        combined_code = self._combiner(model_code, MOO_code, selected_objectives, SIM_TIME, WARMUP_SECONDS)
         clean_initial_combined_model = remove_code_wrappers(combined_code)
         save_model(clean_initial_combined_model, path, "initial_combined_code.py")
 
@@ -87,6 +88,7 @@ class Modeloptimizer:
             f"Here are the results of the MOO analysis from which the suggestions are derived: \n\n {pareto_solutions}\n"
             f"Here are the suggestions in a json format:\n\n {suggestions}\n"
             "Please provide a clear, concise and short explanation for each suggestion, focusing on how it will improve the production system based on the MOO results and the user's priorities."
+            "Do not end you answer with a question. "
         )
         resp = self.client.chat.completions.create(
             model=model, 
@@ -188,7 +190,7 @@ class Modeloptimizer:
                 raise e     
             
     
-    def _combiner(self, model_code, MOO_code, selected_objectives,
+    def _combiner(self, model_code, MOO_code, selected_objectives, SIM_TIME, WARMUP_SECONDS,
         model = "gpt-5.1"):
         prompt = (
             "You are an AI assistant that combines python code"
@@ -199,6 +201,7 @@ class Modeloptimizer:
             f"Here is the existing simulation code:\n\n```python\n {model_code}\n```\n\n"
             f"Here is the MOO algorithm code:\n\n```python\n {MOO_code}\n```\n\n"
             "Make sure that the combined code is properly integrated, with the MOO algorithm being called in the right place, and that all necessary imports and dependencies are included. "
+            f"The simulation will run for {SIM_TIME} seconds with a warmup period of {WARMUP_SECONDS} seconds."
             "When the combined code is run the MOO algorithm should optimize the simulation code and output all results as a table of the different solutions found by the MOO algorithm, with their corresponding KPI values."
             "The final combined python code should return a csv file with all the different solutions from every generation found by the MOO algorithm"
             f"Make sure that the csv file contain KPI values for the selected objectives: {selected_objectives}, the column names should be the same as the objective names. "
@@ -292,7 +295,7 @@ class Modeloptimizer:
                 except ValueError:
                     print("Please enter a numerical value.")
 
-        print(f"\nFinal configuration: {selected_objectives[0]} ({directions[0]}) vs {selected_objectives[1]} ({directions[1]})")
+        print(f"\nFinal configuration: {selected_objectives[0]} ({directions[0]}) vs {selected_objectives[1]} ({directions[1]})\n\n")
         return selected_objectives, directions
     
 
@@ -334,7 +337,7 @@ class Modeloptimizer:
 
             print("Running the MOO algorithm...")
             #read the code again after manual review
-            with open(os.path.join(path, "checked_initial_combined_code.py"), "r") as f:
+            with open(os.path.join(path, "checked_initial_combined_code.py"), "r", encoding='utf-8') as f:
                 code = f.read()
             
             try:
@@ -345,7 +348,7 @@ class Modeloptimizer:
                 break 
             except Exception as e:
                 error_message = str(e)
-                print(f"Attempt {attempt + 1} failed, this is the error message: {error_message}, repairing code...")
+                print(f"Attempt {attempt + 1} failed, this is the error message:\n\n {error_message}\n\n, repairing code...")
                 attempt += 1
                 if attempt == max_attempts:
                     print("Maximum fix attempts reached. Please fix the code manually.")

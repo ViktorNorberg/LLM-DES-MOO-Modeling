@@ -14,9 +14,7 @@ code_path = os.path.join("results", "initial_model.py")
 with open(code_path, "r") as file:
     code_input = file.read()
 
-
 optimizer = Modeloptimizer(client)
 
 suggestions = optimizer.optimize(model_code = code_input)
 
-print(suggestions)
