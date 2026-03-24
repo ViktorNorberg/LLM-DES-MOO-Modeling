@@ -102,7 +102,7 @@ def main() -> None:
     elif isinstance(suggestions, list):
         step_list = suggestions
     else:
-        raise ValueError("Unexpected format from agent_bottleneck")
+        raise ValueError("Unexpected format from optimizer suggestions")
     
     human_input = input("Do you want to manually add one change to the model? If yes please answer with the change (leave blank to skip): ").strip().lower()
     if human_input:
@@ -131,3 +131,5 @@ if __name__ == "__main__":
     main()
     end = time.time()
     print(f"\nTotal execution time: {end - start:.2f} seconds")
+
+#test comment
