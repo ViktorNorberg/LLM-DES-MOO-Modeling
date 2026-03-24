@@ -414,4 +414,4 @@ class Modeloptimizer:
         png_path = os.path.join(path, "UML.png")
         with open(mmd_path, "w", encoding="utf-8") as f:
             f.write(UML_diagram)
-        render_mermaid_to_png(mmd_path, png_path)
+        render_mermaid_to_png(mmd_path, png_path, client=self.client)

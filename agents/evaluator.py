@@ -1,5 +1,4 @@
 from openai import OpenAI
-from helpers.other_helpers import retrieve_KPIs
 
 class Evaluater:
     def __init__(self, client: OpenAI):
