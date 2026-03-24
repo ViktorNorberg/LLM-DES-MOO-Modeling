@@ -1,39 +1,37 @@
 flowchart TD
-SimulationModel["**Simulation Model**<br/>Attributes env raw_input sink defects delay_buffers machines_list<br/>Methods run_simulation seed warmup measure_until sample_wip reset_machine_stats"]
-DelayBuffer["**DelayBuffer Class**<br/>Attributes cap delay store tokens _in_transit<br/>Methods put get in_transit_count free_capacity _delayed_put _get_and_release"]
-Machine["**Machine Class**<br/>Attributes name input_buffer output_buffer process_time availability mttr working_power waiting_power resource is_up working_time failed_time_total wait_input_time blocked_time active_count processed_count window_wait_time<br/>Methods run _breakdown_cycle waiting_energy_consumption working_energy_consumption"]
-ParameterSpace["**Parameter Space**<br/>Attributes buffer_names bounds {1-5} discrete<br/>Methods enumerate_candidates map_genes_to_buffers"]
-Individual["**Individual**<br/>Attributes genes buffer_capacities dict fitness_throughput fitness_wip dominated_flag<br/>Methods evaluate mutate crossover encode decode"]
-MOO_Optimizer["**MOO Optimizer**<br/>Attributes population_size generations objectives {wip min throughput max} algorithm NSGA2_like selection mutation crossover<br/>Methods initialize_population evaluate_population select_and_evolve run get_pareto_front"]
-SimulationRunner["**Simulation Runner**<br/>Attributes seed_schedule warmup measure_until parallel_workers<br/>Methods run_case run_batch map_individual_to_simulation collect_metrics"]
-FitnessEvaluator["**Fitness Evaluator**<br/>Attributes objective_weights transform_rules<br/>Methods compute_fitness from_metrics normalize handle_stochastic_replication"]
-ResultCollector["**Result Collector**<br/>Attributes pareto_archive histories run_logs<br/>Methods update_archive save_snapshot export_results"]
-ProductionManager["**Production Manager**<br/>Role consumes Pareto solutions selects candidate tradeoffs interprets KPIs"]
+MOO_Controller["**MOO_Controller**<br/>Optimizes buffer capacities to minimize WIP and maximize Throughput"]
+PopulationManager["**PopulationManager**<br/>Attributes population list methods initialize mutate select evaluate"]
+CandidateSolution["**CandidateSolution**<br/>Attributes buffer_caps for buffers capacities {1-5} methods encode decode apply"]
+SelectionOperator["**SelectionOperator**<br/>Performs parent selection by tournament or ranking"]
+VariationOperator["**VariationOperator**<br/>Applies crossover and mutation ensures capacities in {1-5}"]
+Scheduler["**Scheduler**<br/>Dispatches simulation jobs possibly parallel manages random seeds"]
+SimulatorInterface["**SimulatorInterface**<br/>Adapter for original simulation code method run simulation with buffer_caps and seed"]
+RunSimulationFunction["**RunSimulationFunction**<br/>Wrapper around original run_simulation returns metrics for a run"]
+SystemModelBuffers["**SystemModelBuffers**<br/>Defines buffers PostLoadingBuffer PostConveyorBuffer PostWashingBuffer PrePress1Buffer PrePress2Buffer PostPress1_2Buffer capacities {1-5}"]
+MetricsCollector["**MetricsCollector**<br/>Collects throughput wip produced_parts and machine energy per run"]
+ObjectiveEvaluator["**ObjectiveEvaluator**<br/>Computes objective vector WIP to minimize Throughput to maximize"]
+ParetoArchive["**ParetoArchive**<br/>Stores non dominated CandidateSolution objects updates Pareto front"]
+UserInterface["**UserInterface**<br/>Manager sets constraints budget and stop criteria visualizes Pareto front"]
 
-%% Data flow and interactions
-MOO_Optimizer -->|initialize population| ParameterSpace
-ParameterSpace -->|produce individuals| Individual
-MOO_Optimizer -->|request evaluation of individuals| SimulationRunner
-Individual -->|provide genes buffer capacities| SimulationRunner
-SimulationRunner -->|instantiate or configure| SimulationModel
-SimulationModel -->|uses classes| DelayBuffer
-SimulationModel -->|uses classes| Machine
-SimulationRunner -->|run run_simulation for seed schedule| SimulationModel
-SimulationModel -->|return metrics throughput wip machine_energy| SimulationRunner
-SimulationRunner -->|pass metrics| FitnessEvaluator
-FitnessEvaluator -->|compute fitness values| MOO_Optimizer
-MOO_Optimizer -->|evolve population| Individual
-MOO_Optimizer -->|store nondominated solutions| ResultCollector
-ResultCollector -->|present Pareto set| ProductionManager
+MOO_Controller --> PopulationManager
+MOO_Controller --> ParetoArchive
+MOO_Controller --> UserInterface
 
-%% Supporting flows for optimization loop
-MOO_Optimizer -->|select candidates| Individual
-Individual -->|crossover mutate| Individual
-MOO_Optimizer -.->|stop criteria generations or budget| ResultCollector
-ProductionManager -->|feedback constraint or preference| MOO_Optimizer
+PopulationManager --> CandidateSolution
+PopulationManager --> SelectionOperator
 
-%% Notes on parameter mapping and constraints
-ParameterSpace -.->|enforce discrete bounds {1-5}| SimulationRunner
-SimulationRunner -.->|map genes to DelayBuffer cap attributes| SimulationModel
+SelectionOperator --> VariationOperator
+VariationOperator --> CandidateSolution
+VariationOperator --> Scheduler
 
-%% End of diagram
+Scheduler --> SimulatorInterface
+SimulatorInterface --> RunSimulationFunction
+SimulatorInterface --> SystemModelBuffers
+
+RunSimulationFunction --> MetricsCollector
+MetricsCollector --> ObjectiveEvaluator
+ObjectiveEvaluator --> ParetoArchive
+ObjectiveEvaluator --> PopulationManager
+
+ParetoArchive --> PopulationManager
+UserInterface --> MOO_Controller

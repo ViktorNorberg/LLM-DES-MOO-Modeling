@@ -1,356 +1,476 @@
-from pymoo.core.problem import Problem
+from pymoo.core.problem import ElementwiseProblem
 from pymoo.algorithms.moo.nsga2 import NSGA2
-from pymoo.operators.sampling.rnd import IntegerRandomSampling
+from pymoo.operators.selection.tournament import TournamentSelection
 from pymoo.operators.crossover.sbx import SBX
 from pymoo.operators.mutation.pm import PM
 from pymoo.termination import get_termination
 from pymoo.optimize import minimize
+from pymoo.core.callback import Callback
 import numpy as np
 import random
+import statistics
 
-# Assumes the simulation code (including run_simulation) is imported or present in the same module.
+# ---------------------------------------------------------------------------
+# Assumed to be imported from the existing simulation module:
+# from your_simulation_module import run_simulation, RANDOM_SEED
+# Here we assume run_simulation(seed, warmup, measure_until) is available.
+# ---------------------------------------------------------------------------
+
+# ---------------------- SystemModelBuffers ---------------------------------
 
 
-class SimulationAdapter:
+class SystemModelBuffers:
     """
-    Adapter to connect the optimization variables (buffer capacities)
-    to the existing run_simulation function.
+    Defines the mapping and bounds for the tunable buffer capacities.
+    Buffers:
+        0: PostLoadingBuffer
+        1: PostConveyorBuffer
+        2: PostWashingBuffer
+        3: PrePress1Buffer
+        4: PrePress2Buffer
+        5: PostPress1_2Buffer
+    Capacities are integers in [1, 5].
     """
 
-    def __init__(self, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
+    BUFFER_NAMES = [
+        "PostLoadingBuffer",
+        "PostConveyorBuffer",
+        "PostWashingBuffer",
+        "PrePress1Buffer",
+        "PrePress2Buffer",
+        "PostPress1_2Buffer",
+    ]
+
+    LOWER_BOUND = 1
+    UPPER_BOUND = 5
+
+    @classmethod
+    def n_buffers(cls):
+        return len(cls.BUFFER_NAMES)
+
+    @classmethod
+    def bounds(cls):
+        n = cls.n_buffers()
+        xl = np.full(n, cls.LOWER_BOUND, dtype=float)
+        xu = np.full(n, cls.UPPER_BOUND, dtype=float)
+        return xl, xu
+
+
+# ---------------------- CandidateSolution ----------------------------------
+
+
+class CandidateSolution:
+    """
+    Encodes a candidate solution as a vector of buffer capacities.
+    """
+
+    def __init__(self, buffer_caps):
+        # buffer_caps: iterable of ints in [1,5]
+        self.buffer_caps = np.array(buffer_caps, dtype=int)
+
+    def encode(self):
+        # Return as float array for pymoo
+        return self.buffer_caps.astype(float)
+
+    @classmethod
+    def decode(cls, x):
+        # x: numpy array of floats -> round and clip to [1,5]
+        x_int = np.rint(x).astype(int)
+        x_int = np.clip(
+            x_int, SystemModelBuffers.LOWER_BOUND, SystemModelBuffers.UPPER_BOUND
+        )
+        return cls(x_int)
+
+    def apply_to_kwargs(self, kwargs):
+        """
+        Prepare keyword arguments for the simulator to use these capacities.
+        This assumes the simulation's run_simulation function can accept
+        a 'buffer_caps' argument as a dict or list.
+        """
+        kwargs = dict(kwargs) if kwargs is not None else {}
+        kwargs["buffer_caps"] = {
+            name: int(cap)
+            for name, cap in zip(SystemModelBuffers.BUFFER_NAMES, self.buffer_caps)
+        }
+        return kwargs
+
+
+# ---------------------- RunSimulationFunction / SimulatorInterface ---------
+
+
+class RunSimulationFunction:
+    """
+    Wrapper around the original run_simulation.
+    """
+
+    def __init__(self, warmup=None, measure_until=None, base_seed=None):
         self.warmup = warmup
         self.measure_until = measure_until
+        self.base_seed = RANDOM_SEED if base_seed is None else base_seed
 
-    def _run_single(self, seed, capacities):
+    def __call__(self, buffer_caps, seed_offset=0):
         """
-        Run a single simulation with given random seed and buffer capacities.
-        This function assumes that run_simulation can be modified to accept
-        buffer capacities, or that a wrapper around run_simulation is used.
-        Here we show a wrapper pattern that redefines run_simulation_with_caps.
+        buffer_caps: CandidateSolution
+        seed_offset: int
         """
-        # capacities is a dict mapping buffer names to capacity values
-        return run_simulation_with_caps(seed, capacities, self.warmup, self.measure_until)
-
-    def evaluate(self, capacities, runs=3, base_seed=RANDOM_SEED):
-        """
-        Evaluate a configuration (capacities) by running the simulation multiple times
-        and averaging throughput and WIP.
-        capacities: dict with keys:
-            PostLoadingBuffer, PostConveyorBuffer, PostWashingBuffer,
-            PrePress1Buffer, PrePress2Buffer, PostPress12Buffer
-        """
-        throughputs = []
-        wips = []
-        for i in range(runs):
-            seed = base_seed + i
-            res = self._run_single(seed, capacities)
-            overall = res["overall"]
-            throughputs.append(overall["throughput"])
-            wips.append(overall["wip"])
-        mean_throughput = float(np.mean(throughputs)) if throughputs else 0.0
-        mean_wip = float(np.mean(wips)) if wips else 0.0
-        return mean_wip, mean_throughput
-
-
-def run_simulation_with_caps(seed, capacities, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
-    """
-    Wrapper around the original run_simulation that injects buffer capacities.
-    This function is a modified copy of run_simulation where the capacities
-    of the DelayBuffers are taken from the 'capacities' dict.
-    """
-
-    random.seed(seed)
-    env = simpy.Environment()
-
-    # Extract capacities from dict
-    cap_PostLoadingBuffer = capacities["PostLoadingBuffer"]
-    cap_PostConveyorBuffer = capacities["PostConveyorBuffer"]
-    cap_PostWashingBuffer = capacities["PostWashingBuffer"]
-    cap_PrePress1Buffer = capacities["PrePress1Buffer"]
-    cap_PrePress2Buffer = capacities["PrePress2Buffer"]
-    cap_PostPress12Buffer = capacities["PostPress12Buffer"]
-
-    # Buffers with adjustable capacities
-    PostLoadingBuffer = DelayBuffer(env, cap=cap_PostLoadingBuffer, delay=10)
-    PostConveyorBuffer = DelayBuffer(env, cap=cap_PostConveyorBuffer, delay=10)
-    PostWashingBuffer = DelayBuffer(env, cap=cap_PostWashingBuffer, delay=10)
-    PrePress1Buffer = DelayBuffer(env, cap=cap_PrePress1Buffer, delay=32)
-    PrePress2Buffer = DelayBuffer(env, cap=cap_PrePress2Buffer, delay=32)
-    PostPress12Buffer = DelayBuffer(env, cap=cap_PostPress12Buffer, delay=32)
-
-    # Raw input and sinks
-    raw_input = simpy.Store(env, capacity=1000)
-    sink = simpy.Store(env, capacity=100000)
-    defects = simpy.Store(env, capacity=100000)
-
-    # Helper stores for parallel routing of presses
-    hantering_out = simpy.Store(env, capacity=cap_PrePress1Buffer + cap_PrePress2Buffer)
-    post_press1_out = simpy.Store(env, capacity=cap_PrePress1Buffer)
-    post_press2_out = simpy.Store(env, capacity=cap_PrePress2Buffer)
-
-    # Machines
-    Loading_robot = Machine(
-        env, "Loading robot",
-        input_buffer=raw_input,
-        output_buffer=PostLoadingBuffer,
-        process_time=12.0,
-        availability=90.49, mttr=68.0,
-        working_power=kwh_per_sec(0.72),
-        waiting_power=kwh_per_sec(0.25),
-    )
-
-    Conveyor_belt = Machine(
-        env, "Conveyor belt",
-        input_buffer=PostLoadingBuffer,
-        output_buffer=PostConveyorBuffer,
-        process_time=6.0,
-        availability=100.0, mttr=1.0,
-        working_power=kwh_per_sec(0.00),
-        waiting_power=kwh_per_sec(0.00),
-    )
-
-    Washing_machine = Machine(
-        env, "Washing machine",
-        input_buffer=PostConveyorBuffer,
-        output_buffer=PostWashingBuffer,
-        process_time=14.0,
-        availability=80.89, mttr=269.0,
-        working_power=kwh_per_sec(35.24),
-        waiting_power=kwh_per_sec(4.28),
-    )
-
-    Hantering_cell = Machine(
-        env, "Hantering cell",
-        input_buffer=PostWashingBuffer,
-        output_buffer=hantering_out,
-        process_time=25.0,
-        availability=97.79, mttr=74.0,
-        working_power=kwh_per_sec(0.74),
-        waiting_power=kwh_per_sec(0.50),
-    )
-
-    Presses_cell_1 = Machine(
-        env, "Presses cell 1",
-        input_buffer=PrePress1Buffer,
-        output_buffer=post_press1_out,
-        process_time=175.0,
-        availability=87.79, mttr=73.0,
-        working_power=kwh_per_sec(1.28),
-        waiting_power=kwh_per_sec(1.25),
-    )
-
-    Presses_cell_2 = Machine(
-        env, "Presses cell 2",
-        input_buffer=PrePress2Buffer,
-        output_buffer=post_press2_out,
-        process_time=176.0,
-        availability=87.69, mttr=74.0,
-        working_power=kwh_per_sec(1.27),
-        waiting_power=kwh_per_sec(1.25),
-    )
-
-    Quality_station_cell = Machine(
-        env, "Quality station cell",
-        input_buffer=PostPress12Buffer,
-        output_buffer=sink,
-        process_time=41.0,
-        availability=85.87, mttr=66.0,
-        working_power=kwh_per_sec(0.84),
-        waiting_power=kwh_per_sec(0.58),
-        defect_rate=0.089,
-        defect_sink=defects,
-    )
-
-    machines_list = [
-        Loading_robot,
-        Conveyor_belt,
-        Washing_machine,
-        Hantering_cell,
-        Presses_cell_1,
-        Presses_cell_2,
-        Quality_station_cell,
-    ]
-
-    # Routing logic
-    env.process(splitter(env, hantering_out, PrePress1Buffer, PrePress2Buffer))
-    merger(env, post_press1_out, post_press2_out, PostPress12Buffer)
-
-    # Start part generation into raw_input
-    env.process(part_generator(env, raw_input))
-
-    # Run warm-up
-    env.run(until=warmup)
-
-    # Reset statistics after warm-up
-    for m in machines_list:
-        reset_machine_stats(m)
-
-    produced_count_before = len(sink.items)
-
-    wip_samples = []
-    delay_buffers = [
-        PostLoadingBuffer,
-        PostConveyorBuffer,
-        PostWashingBuffer,
-        PrePress1Buffer,
-        PrePress2Buffer,
-        PostPress12Buffer,
-    ]
-
-    def sample_wip(env_local):
-        while True:
-            ready = sum(len(b.items) for b in delay_buffers)
-            in_transit = sum(b.in_transit_count() for b in delay_buffers)
-            in_machines = sum(m.active_count for m in machines_list)
-            wip_samples.append(ready + in_transit + in_machines)
-            yield env_local.timeout(60)
-
-    env.process(sample_wip(env))
-    env.run(until=measure_until)
-
-    total_produced = len(sink.items) - produced_count_before
-    hours = (measure_until - warmup) / 3600.0
-    throughput = (total_produced / hours) if hours > 0 else 0.0
-    avg_wip = float(np.mean(wip_samples)) if wip_samples else 0.0
-
-    result = {"overall": {
-        "throughput": throughput,
-        "wip": avg_wip,
-        "produced_parts": total_produced},
-        "machine_energy": {}}
-
-    for m in machines_list:
-        waiting_energy = m.waiting_energy_consumption()
-        working_energy = m.working_energy_consumption()
-        total_energy = waiting_energy + working_energy
-        result["machine_energy"][m.name] = {
-            "working_time": m.working_time,
-            "waiting_time": m.failed_time_total + m.blocked_time,
-            "working_energy": working_energy,
-            "waiting_energy": waiting_energy,
-            "total_energy": total_energy}
-
-    return result
-
-
-class ProductionLineProblem(Problem):
-    """
-    pymoo Problem definition for optimizing buffer capacities
-    to minimize WIP and maximize throughput (implemented as minimizing -throughput).
-    Decision variables:
-        x[0] -> PostLoadingBuffer capacity
-        x[1] -> PostConveyorBuffer capacity
-        x[2] -> PostWashingBuffer capacity
-        x[3] -> PrePress1Buffer capacity
-        x[4] -> PrePress2Buffer capacity
-        x[5] -> PostPress12Buffer capacity
-    """
-
-    def __init__(self, adapter: SimulationAdapter, runs_per_eval=3):
-        super().__init__(
-            n_var=6,
-            n_obj=2,
-            n_constr=0,
-            xl=np.array([1, 1, 1, 1, 1, 1]),
-            xu=np.array([5, 5, 5, 5, 5, 5]),
-            type_var=int
+        seed = self.base_seed + seed_offset
+        # The original run_simulation does not accept buffer capacities.
+        # To integrate, you must modify run_simulation to accept buffer_caps
+        # and apply them when creating DelayBuffer instances.
+        # Here we assume such an interface exists:
+        # run_simulation(seed, warmup=self.warmup, measure_until=self.measure_until,
+        #                buffer_caps={...})
+        kwargs = {}
+        kwargs["warmup"] = self.warmup if self.warmup is not None else WARMUP_SECONDS
+        kwargs["measure_until"] = (
+            self.measure_until if self.measure_until is not None else MEASURE_UNTIL
         )
-        self.adapter = adapter
-        self.runs_per_eval = runs_per_eval
+        kwargs["seed"] = seed
 
-    def _evaluate(self, X, out, *args, **kwargs):
-        """
-        X is a 2D array of shape (n_individuals, 6)
-        """
-        n = X.shape[0]
-        F = np.zeros((n, self.n_obj), dtype=float)
+        # Apply buffer capacities
+        kwargs["buffer_caps"] = {
+            name: int(cap)
+            for name, cap in zip(
+                SystemModelBuffers.BUFFER_NAMES, buffer_caps.buffer_caps
+            )
+        }
 
-        for i in range(n):
-            x = X[i, :]
-            capacities = {
-                "PostLoadingBuffer": int(x[0]),
-                "PostConveyorBuffer": int(x[1]),
-                "PostWashingBuffer": int(x[2]),
-                "PrePress1Buffer": int(x[3]),
-                "PrePress2Buffer": int(x[4]),
-                "PostPress12Buffer": int(x[5]),
-            }
-            mean_wip, mean_throughput = self.adapter.evaluate(capacities, runs=self.runs_per_eval)
-            # Objectives: minimize WIP, maximize throughput -> minimize -throughput
-            F[i, 0] = mean_wip
-            F[i, 1] = -mean_throughput
-
-        out["F"] = F
+        # The following assumes you have updated run_simulation signature to:
+        # run_simulation(seed, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL,
+        #                buffer_caps=None)
+        result = run_simulation(
+            kwargs["seed"],
+            warmup=kwargs["warmup"],
+            measure_until=kwargs["measure_until"],
+            buffer_caps=kwargs["buffer_caps"],
+        )
+        return result
 
 
-def run_nsga2_optimization(
-    population_size=20,
-    n_generations=5,
-    runs_per_eval=3,
-    warmup=WARMUP_SECONDS,
-    measure_until=MEASURE_UNTIL,
-    random_seed=RANDOM_SEED
-):
+class SimulatorInterface:
     """
-    Run NSGA-II optimization on the production line simulation.
-    Returns the pymoo result object containing the Pareto front and decision variables.
+    Adapter for the original simulation code.
     """
 
-    np.random.seed(random_seed)
-    random.seed(random_seed)
+    def __init__(self, run_sim_func):
+        self.run_sim = run_sim_func
 
-    adapter = SimulationAdapter(warmup=warmup, measure_until=measure_until)
-    problem = ProductionLineProblem(adapter=adapter, runs_per_eval=runs_per_eval)
+    def run(self, candidate, seed_offset=0):
+        return self.run_sim(candidate, seed_offset=seed_offset)
 
-    sampling = IntegerRandomSampling()
-    crossover = SBX(prob=0.9, eta=15)
-    mutation = PM(eta=20)
 
-    algorithm = NSGA2(
-        pop_size=population_size,
-        sampling=sampling,
-        crossover=crossover,
-        mutation=mutation,
-        eliminate_duplicates=True
-    )
+# ---------------------- MetricsCollector / ObjectiveEvaluator --------------
 
-    termination = get_termination("n_gen", n_generations)
 
-    res = minimize(
-        problem,
-        algorithm,
-        termination,
-        seed=random_seed,
-        save_history=False,
-        verbose=True
-    )
+class MetricsCollector:
+    """
+    Collects throughput, wip, produced_parts and machine energy per run.
+    """
 
-    return res
+    @staticmethod
+    def collect(sim_result):
+        overall = sim_result["overall"]
+        machine_energy = sim_result["machine_energy"]
+        throughput = overall["throughput"]
+        wip = overall["wip"]
+        produced_parts = overall["produced_parts"]
+        total_energy = sum(m["total_energy"] for m in machine_energy.values())
+        return {
+            "throughput": throughput,
+            "wip": wip,
+            "produced_parts": produced_parts,
+            "total_energy": total_energy,
+        }
 
+
+class ObjectiveEvaluator:
+    """
+    Computes objective vector:
+        f1 = WIP (to minimize)
+        f2 = -Throughput (to minimize, since NSGA2 is minimization-based)
+    """
+
+    def __init__(self, simulator, n_replications=1):
+        self.simulator = simulator
+        self.n_replications = n_replications
+
+    def evaluate(self, candidate):
+        wip_list = []
+        thr_list = []
+
+        for r in range(self.n_replications):
+            sim_res = self.simulator.run(candidate, seed_offset=r)
+            metrics = MetricsCollector.collect(sim_res)
+            wip_list.append(metrics["wip"])
+            thr_list.append(metrics["throughput"])
+
+        mean_wip = statistics.mean(wip_list)
+        mean_thr = statistics.mean(thr_list)
+
+        f1 = mean_wip
+        f2 = -mean_thr
+        return np.array([f1, f2], dtype=float)
+
+
+# ---------------------- ParetoArchive --------------------------------------
+
+
+class ParetoArchive:
+    """
+    Stores non-dominated CandidateSolution objects and their objective values.
+    """
+
+    def __init__(self):
+        self.solutions = []  # list of (CandidateSolution, f)
+
+    def update(self, candidate, f):
+        new_solutions = []
+        dominated = False
+        for c, fv in self.solutions:
+            if self._dominates(fv, f):
+                dominated = True
+                break
+            if not self._dominates(f, fv):
+                new_solutions.append((c, fv))
+        if not dominated:
+            new_solutions.append((candidate, f))
+        self.solutions = new_solutions
+
+    @staticmethod
+    def _dominates(f1, f2):
+        return np.all(f1 <= f2) and np.any(f1 < f2)
+
+
+# ---------------------- PopulationManager / Selection / Variation ----------
+
+
+class SelectionOperator:
+    """
+    Performs parent selection using tournament selection (delegated to pymoo).
+    """
+
+    def __init__(self, selection):
+        self.selection = selection
+
+    def select(self, pop, n_parents):
+        return self.selection.do(pop, n_parents)
+
+
+class VariationOperator:
+    """
+    Applies crossover and mutation, ensuring capacities remain in {1,...,5}.
+    """
+
+    def __init__(self, crossover, mutation):
+        self.crossover = crossover
+        self.mutation = mutation
+
+    def vary(self, problem, pop):
+        off = self.crossover.do(problem, pop)
+        off = self.mutation.do(problem, off)
+        # Ensure integer and bounds
+        for ind in off:
+            x = ind.X
+            x = np.rint(x).astype(int)
+            x = np.clip(
+                x, SystemModelBuffers.LOWER_BOUND, SystemModelBuffers.UPPER_BOUND
+            )
+            ind.X = x.astype(float)
+        return off
+
+
+class PopulationManager:
+    """
+    Manages population initialization and evaluation.
+    """
+
+    def __init__(self, problem, evaluator):
+        self.problem = problem
+        self.evaluator = evaluator
+
+    def initialize(self, pop_size):
+        n_var = SystemModelBuffers.n_buffers()
+        pop = []
+        for _ in range(pop_size):
+            caps = np.random.randint(
+                SystemModelBuffers.LOWER_BOUND,
+                SystemModelBuffers.UPPER_BOUND + 1,
+                size=n_var,
+            )
+            cand = CandidateSolution(caps)
+            x = cand.encode()
+            f = self.evaluator.evaluate(cand)
+            pop.append({"X": x, "F": f})
+        return pop
+
+    def evaluate_population(self, pop):
+        for ind in pop:
+            x = ind["X"]
+            cand = CandidateSolution.decode(x)
+            f = self.evaluator.evaluate(cand)
+            ind["F"] = f
+        return pop
+
+
+# ---------------------- Scheduler (simple, sequential) ---------------------
+
+
+class Scheduler:
+    """
+    Dispatches simulation jobs (sequential in this simple implementation).
+    """
+
+    def __init__(self, simulator):
+        self.simulator = simulator
+
+    def run_candidate(self, candidate, seed_offset=0):
+        return self.simulator.run(candidate, seed_offset=seed_offset)
+
+
+# ---------------------- MOO Problem for pymoo ------------------------------
+
+
+class BufferOptimizationProblem(ElementwiseProblem):
+    """
+    Pymoo problem wrapper around the simulation-based objective evaluator.
+    """
+
+    def __init__(self, evaluator):
+        xl, xu = SystemModelBuffers.bounds()
+        super().__init__(n_var=SystemModelBuffers.n_buffers(), n_obj=2, xl=xl, xu=xu)
+        self.evaluator = evaluator
+
+    def _evaluate(self, x, out, *args, **kwargs):
+        cand = CandidateSolution.decode(x)
+        f = self.evaluator.evaluate(cand)
+        out["F"] = f
+
+
+# ---------------------- Callback for ParetoArchive -------------------------
+
+
+class ParetoCallback(Callback):
+    def __init__(self, archive):
+        super().__init__()
+        self.archive = archive
+
+    def notify(self, algorithm):
+        pop = algorithm.pop
+        for ind in pop:
+            x = ind.X
+            f = ind.F
+            cand = CandidateSolution.decode(x)
+            self.archive.update(cand, f)
+
+
+# ---------------------- UserInterface (minimal stub) -----------------------
+
+
+class UserInterface:
+    """
+    Minimal stub for setting constraints and visualizing results.
+    """
+
+    def __init__(self):
+        self.budget = None
+        self.stop_criteria = None
+
+    def set_budget(self, n_evals):
+        self.budget = n_evals
+
+    def set_stop_criteria(self, generations):
+        self.stop_criteria = generations
+
+    def show_pareto_front(self, archive):
+        print("Pareto Front (WIP, -Throughput, capacities):")
+        for cand, f in archive.solutions:
+            print(f"F={f}, caps={cand.buffer_caps}")
+
+
+# ---------------------- MOO_Controller -------------------------------------
+
+
+class MOO_Controller:
+    """
+    Orchestrates the NSGA-II optimization of buffer capacities.
+    """
+
+    def __init__(
+        self,
+        pop_size=20,
+        n_gen=5,
+        n_replications=1,
+        warmup=None,
+        measure_until=None,
+        base_seed=None,
+    ):
+        self.pop_size = pop_size
+        self.n_gen = n_gen
+
+        self.run_sim_func = RunSimulationFunction(
+            warmup=warmup, measure_until=measure_until, base_seed=base_seed
+        )
+        self.simulator = SimulatorInterface(self.run_sim_func)
+        self.scheduler = Scheduler(self.simulator)
+        self.evaluator = ObjectiveEvaluator(self.simulator, n_replications=n_replications)
+        self.problem = BufferOptimizationProblem(self.evaluator)
+
+        self.archive = ParetoArchive()
+        self.ui = UserInterface()
+
+        # NSGA-II operators
+        self.selection = TournamentSelection(func_comp=None)
+        self.crossover = SBX(prob=0.9, eta=15)
+        self.mutation = PM(prob=None, eta=20)
+
+        self.algorithm = NSGA2(
+            pop_size=self.pop_size,
+            sampling=self._sampling,
+            selection=self.selection,
+            crossover=self.crossover,
+            mutation=self.mutation,
+            eliminate_duplicates=True,
+        )
+
+    def _sampling(self, problem, n_samples, **kwargs):
+        xl, xu = problem.xl, problem.xu
+        n_var = problem.n_var
+        X = np.zeros((n_samples, n_var))
+        for i in range(n_samples):
+            caps = np.random.randint(
+                SystemModelBuffers.LOWER_BOUND,
+                SystemModelBuffers.UPPER_BOUND + 1,
+                size=n_var,
+            )
+            X[i, :] = caps.astype(float)
+        return X
+
+    def run(self):
+        termination = get_termination("n_gen", self.n_gen)
+        callback = ParetoCallback(self.archive)
+
+        res = minimize(
+            self.problem,
+            self.algorithm,
+            termination,
+            callback=callback,
+            verbose=True,
+        )
+
+        self.ui.show_pareto_front(self.archive)
+        return res, self.archive
+
+
+# ---------------------- Example main integration ---------------------------
 
 if __name__ == "__main__":
-    # Example of running the optimization and printing Pareto-optimal solutions
-    result = run_nsga2_optimization(
-        population_size=20,
-        n_generations=5,
-        runs_per_eval=3
+    # Example of running the MOO controller.
+    controller = MOO_Controller(
+        pop_size=20,
+        n_gen=5,
+        n_replications=1,
+        warmup=WARMUP_SECONDS,
+        measure_until=MEASURE_UNTIL,
+        base_seed=RANDOM_SEED,
     )
-
-    X = result.X
-    F = result.F
-
-    print("\nPareto-optimal buffer configurations and objectives:")
-    for i in range(len(X)):
-        x = X[i]
-        f = F[i]
-        capacities = {
-            "PostLoadingBuffer": int(x[0]),
-            "PostConveyorBuffer": int(x[1]),
-            "PostWashingBuffer": int(x[2]),
-            "PrePress1Buffer": int(x[3]),
-            "PrePress2Buffer": int(x[4]),
-            "PostPress12Buffer": int(x[5]),
-        }
-        wip = f[0]
-        throughput = -f[1]
-        print(f"Solution {i + 1}: capacities={capacities}, WIP={wip:.2f}, Throughput={throughput:.4f} parts/hour")
+    result, archive = controller.run()

@@ -2,10 +2,13 @@
 import json
 import os
 from pathlib import Path
-from helpers.runner import run_python_code
+
+from helpers.runner import run_MOO_code, run_python_code
 from agents.optimizer import Modeloptimizer
 from openai import OpenAI
 from dotenv import load_dotenv
+
+"""
 
 load_dotenv()
 
@@ -53,7 +56,7 @@ with open(MOO_pareto_csv_path, "r") as file:
 suggestions = _suggest_improvements(client, model_code, user_input="prioritize high throughput", pareto_solutions = pareto_solution)
 print(suggestions)
 
-"""
+
 optimizer = Modeloptimizer(client)
 
 
@@ -81,5 +84,11 @@ suggestions =optimizer._suggest_improvements(clean_checked_combined_code, user_i
 print(suggestions)
 
 """
+path = Path("results")
+
+with open(os.path.join(path, "checked_initial_combined_code.py"), "r", encoding='utf-8') as f:
+    code = f.read()
+    
+run_MOO_code(code)
 
 #added comment

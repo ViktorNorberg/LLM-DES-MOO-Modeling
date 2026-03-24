@@ -6,70 +6,70 @@ classDef sink fill:#ffb3b3,stroke:#990000,stroke-width:1px,color:#000;
 classDef defect fill:#ff9999,stroke:#660000,stroke-width:1px,color:#000;
 classDef helper fill:#e0e0e0,stroke:#666666,stroke-width:1px,color:#000;
 
-PartGen["**Part\nGenerator**\nrate=1/s"]:::store
-raw_input["**Raw\ninput\nStore**\nCAP=1000"]:::store
+PartGenerator["**Part\nGenerator**
+rate=1/s"]:::helper
+raw_input["**Raw\ninput**
+store cap=1000"]:::store
+LoadingRobot["**Loading\nrobot**
+PT=12s\navail=90.49%"]:::machine
+PostLoadingBuffer["**PostLoading\nBuffer**
+Delay=10s\ncap=2"]:::buffer
+ConveyorBelt["**Conveyor\nbelt**
+PT=6s\navail=100%"]:::machine
+PostConveyorBuffer["**PostConveyor\nBuffer**
+Delay=10s\ncap=2"]:::buffer
+WashingMachine["**Washing\nmachine**
+PT=14s\navail=80.89%"]:::machine
+PostWashingBuffer["**PostWashing\nBuffer**
+Delay=10s\ncap=2"]:::buffer
+HanteringCell["**Hantering\ncell**
+PT=25s\navail=97.79%"]:::machine
+PrePressJoinBuffer["**PrePress\nJoin\nBuffer**
+helper store\ncap=6"]:::helper
+Splitter["**Splitter**
+round-robin\nsplitter"]:::helper
+PrePress1Buffer["**PrePress1\nBuffer**
+Delay=32s\ncap=3"]:::buffer
+PrePress2Buffer["**PrePress2\nBuffer**
+Delay=32s\ncap=3"]:::buffer
+PressCell1["**Presses\ncell 1**
+PT=175s\navail=87.79%"]:::machine
+PressCell2["**Presses\ncell 2**
+PT=176s\navail=87.69%"]:::machine
+PostPress1Out["**PostPress1\nOut**
+helper store\ncap=3"]:::helper
+PostPress2Out["**PostPress2\nOut**
+helper store\ncap=3"]:::helper
+Merger["**Merger**
+merge outputs"]:::helper
+PostPress1_2Buffer["**PostPress\n1_2 Buffer**
+Delay=32s\ncap=3"]:::buffer
+QualityStation["**Quality\nstation\ncell**
+PT=41s\navail=85.87%\ndefect=8.9%"]:::machine
+FinalSink["**Final\nsink**
+finished goods"]:::sink
+DefectSink["**Defect\nsink**
+scrap/defects"]:::defect
 
-Loading_robot["**Loading\nrobot**\nPT=12s\nAVB=90.49%\nMTTR=68s"]:::machine
-PostLoadingBuffer["**PostLoading\nBuffer**\nCAP=2\nDELAY=10s"]:::buffer
-
-Conveyor_belt["**Conveyor\nbelt**\nPT=6s\nAVB=100%"]:::machine
-PostConveyorBuffer["**PostConveyor\nBuffer**\nCAP=2\nDELAY=10s"]:::buffer
-
-Washing_machine["**Washing\nmachine**\nPT=14s\nAVB=80.89%\nMTTR=269s"]:::machine
-PostWashingBuffer["**PostWashing\nBuffer**\nCAP=2\nDELAY=10s"]:::buffer
-
-Hantering_cell["**Hantering\ncell**\nPT=25s\nAVB=97.79%\nMTTR=74s"]:::machine
-split_in["**Split\nhandoff\nStore**\nCAP=3"]:::store
-Splitter["**Splitter\n(toggle)**"]:::helper
-
-split_to_p1["**SplitTo\nPrePress1\nStore**\nCAP=3"]:::store
-split_to_p2["**SplitTo\nPrePress2\nStore**\nCAP=3"]:::store
-Forwarder1["**Forwarder\nto\nPrePress1**"]:::helper
-Forwarder2["**Forwarder\nto\nPrePress2**"]:::helper
-
-PrePress1Buffer["**PrePress1\nBuffer**\nCAP=3\nDELAY=32s"]:::buffer
-PrePress2Buffer["**PrePress2\nBuffer**\nCAP=3\nDELAY=32s"]:::buffer
-
-Presses_cell_1["**Presses\ncell 1**\nPT=175s\nAVB=87.79%\nMTTR=73s"]:::machine
-Presses_cell_2["**Presses\ncell 2**\nPT=176s\nAVB=87.69%\nMTTR=74s"]:::machine
-
-p1_out["**P1\nOut\nStore**\nCAP=3"]:::store
-p2_out["**P2\nOut\nStore**\nCAP=3"]:::store
-Merger["**Merger\n(p1+p2)**"]:::helper
-
-PostPress12Buffer["**PostPress12\nBuffer**\nCAP=3\nDELAY=32s"]:::buffer
-
-Quality_station_cell["**Quality\nstation\ncell**\nPT=41s\nAVB=85.87%\nDEF=8.9%"]:::machine
-Finished_sink["**Finished\nGoods\nSink**"]:::sink
-Defects_sink["**Defect\nSink**"]:::defect
-
-PartGen --> raw_input
-raw_input --> Loading_robot
-Loading_robot --> PostLoadingBuffer
-PostLoadingBuffer --> Conveyor_belt
-Conveyor_belt --> PostConveyorBuffer
-PostConveyorBuffer --> Washing_machine
-Washing_machine --> PostWashingBuffer
-PostWashingBuffer --> Hantering_cell
-Hantering_cell --> split_in
-split_in --> Splitter
-Splitter -->|toggle| split_to_p1
-Splitter -->|toggle| split_to_p2
-
-split_to_p1 --> Forwarder1
-Forwarder1 --> PrePress1Buffer
-split_to_p2 --> Forwarder2
-Forwarder2 --> PrePress2Buffer
-
-PrePress1Buffer --> Presses_cell_1
-PrePress2Buffer --> Presses_cell_2
-Presses_cell_1 --> p1_out
-Presses_cell_2 --> p2_out
-
-p1_out --> Merger
-p2_out --> Merger
-Merger --> PostPress12Buffer
-
-PostPress12Buffer --> Quality_station_cell
-Quality_station_cell -->|ok| Finished_sink
-Quality_station_cell -->|p=8.9%| Defects_sink
+PartGenerator --> raw_input
+raw_input --> LoadingRobot
+LoadingRobot --> PostLoadingBuffer
+PostLoadingBuffer --> ConveyorBelt
+ConveyorBelt --> PostConveyorBuffer
+PostConveyorBuffer --> WashingMachine
+WashingMachine --> PostWashingBuffer
+PostWashingBuffer --> HanteringCell
+HanteringCell --> PrePressJoinBuffer
+PrePressJoinBuffer --> Splitter
+Splitter --> PrePress1Buffer
+Splitter --> PrePress2Buffer
+PrePress1Buffer --> PressCell1
+PrePress2Buffer --> PressCell2
+PressCell1 --> PostPress1Out
+PressCell2 --> PostPress2Out
+PostPress1Out --> Merger
+PostPress2Out --> Merger
+Merger --> PostPress1_2Buffer
+PostPress1_2Buffer --> QualityStation
+QualityStation --> FinalSink
+QualityStation --> DefectSink

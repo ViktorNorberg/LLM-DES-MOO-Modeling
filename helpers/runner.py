@@ -69,3 +69,72 @@ def run_python_code(code_str: str, timeout=7200):
                 tmp_path.unlink()
             except Exception:
                 pass # Prevent cleanup errors from crashing the main script
+
+
+
+import subprocess
+import sys
+import tempfile
+import textwrap
+from pathlib import Path
+
+def run_MOO_code(code_str: str, timeout=7200):
+    tmp_path = None
+    captured_output = [] # We will store lines here to return them at the end
+    
+    try:
+        # 1. Create the temp file (same as before)
+        with tempfile.NamedTemporaryFile(mode="w", 
+                                         delete=False, 
+                                         suffix=".py", 
+                                         encoding="utf-8") as tmp:
+            tmp.write(textwrap.dedent(code_str))
+            tmp_path = Path(tmp.name)
+
+        # 2. Start the process using Popen instead of run
+        # stdout=PIPE allows us to "tap into" the output stream
+        process = subprocess.Popen(
+            [sys.executable, "-u", str(tmp_path)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1 # Line buffered
+        )
+
+        # 3. Read the output in real-time
+        # This loop runs while the simulation is running
+        while True:
+            line = process.stdout.readline()
+            if not line and process.poll() is not None:
+                break
+            if line:
+                print(line, end="", flush=True) # Send to your terminal
+                captured_output.append(line)    # Save for the return value
+
+        # Wait for the process to finish and get stderr
+        stdout_rem, stderr = process.communicate(timeout=timeout)
+        
+        # Catch any remaining stdout after the loop
+        if stdout_rem:
+            print(stdout_rem, end="", flush=True)
+            captured_output.append(stdout_rem)
+
+        # 4. Check for execution errors
+        if process.returncode != 0:
+            raise RuntimeError(f"Execution Error (Code {process.returncode}):\n{stderr}")
+
+        # 5. Return the full string (concatenating the list of lines)
+        return "".join(captured_output)
+
+    except subprocess.TimeoutExpired:
+        # If it times out, we must kill the process manually
+        process.kill()
+        raise RuntimeError(f"Optimization timed out after {timeout} seconds.")
+    
+    finally:
+        # 6. Cleanup (same as before)
+        if tmp_path and tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except Exception:
+                pass

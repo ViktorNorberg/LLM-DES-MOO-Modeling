@@ -5,7 +5,7 @@ from openai import OpenAI
 import json
 from helpers.other_helpers import remove_code_wrappers, remove_code_wrappers, save_model
 from helpers.mermaid_renderer import render_mermaid_to_png
-from helpers.runner import run_python_code
+from helpers.runner import run_MOO_code
 from paretoset import paretoset
 import pandas as pd
 import plotly.express as px
@@ -213,12 +213,10 @@ class Modeloptimizer:
             temperature=0.2)
         
         return resp.choices[0].message.content
-    
-
 
     def _inspector(self, combined_code, objectives, input_variables, error_message=None, 
         model="gpt-5.1"):
-    
+
         if error_message:
 
             prompt = (
@@ -247,7 +245,6 @@ class Modeloptimizer:
             temperature=0.1
         )
         return resp.choices[0].message.content
-    
 
     
     def _choose_objectives(self):
@@ -321,7 +318,7 @@ class Modeloptimizer:
     
     def repair_and_run_code(self, code, path, objectives, input_variables):
         # Iterative Debugging Loop
-        max_attempts = 5
+        max_attempts = 6
         attempt = 0
         error_message = None
 
@@ -343,7 +340,7 @@ class Modeloptimizer:
             try:
                 # Assuming run_python_code raises an Exception on failure
                 # or returns a result indicating failure.
-                _ = run_python_code(code)
+                _ = run_MOO_code(code)
                 print("Run successful!")
                 break 
             except Exception as e:

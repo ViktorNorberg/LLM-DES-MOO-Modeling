@@ -115,48 +115,48 @@ fig.show()
 """
 
 
+
 def visualize_MOO_results(selected_objectives):
-   
-    # 1. Load the data
-    df = pd.read_csv("moo_simulation_results.csv")
-    df2 = pd.read_csv("moo_pareto_solutions.csv")
+        
+        # Load data
+        df = pd.read_csv("moo_simulation_results.csv")
+        df['Type'] = 'Standard Solution'
 
-    # 2. Extract the column names from the CSV before adding "Type"
-    # This captures everything: WIP, Throughput, and all Buffers
-    hover_cols = list(df.columns)
+        df2 = pd.read_csv("moo_pareto_solutions.csv")
+        df2['Type'] = 'Pareto Optimal'
 
-    # 3. Add the "Type" column for legend/coloring
-    df['Type'] = 'Standard Solution'
-    df2['Type'] = 'Pareto Optimal'
+        df3 = pd.read_csv("suggested_improvements.csv")
+        df3['Type'] = 'LLM chosen points'
 
-    df3 = pd.read_csv("suggested_improvements.csv")
-    df3['Type'] = 'LLM chosen points'
+        # Combine them
+        combined_df = pd.concat([df, df2, df3], ignore_index=True)
 
-    # 4. Combine them
-    combined_df = pd.concat([df, df2, df3], ignore_index=True)
+        hover_cols = [col for col in combined_df.columns if col not in selected_objectives and col != 'Type']
+        
+        # Create interactive scatter plot
+        fig = px.scatter(
+            combined_df, 
+            x=selected_objectives[0], 
+            y=selected_objectives[1], 
+            color="Type",
+            hover_data=hover_cols, # Now strictly contains metadata columns
+            title="Interactive MOO Simulation Results",
+            labels={
+                selected_objectives[0]: selected_objectives[0].replace('_', ' ').title(),
+                selected_objectives[1]: selected_objectives[1].replace('_', ' ').title()
+            },
+            template="plotly_white"
+        )
+        
+        # Improve layout: force the legend to be visible and markers to be distinct
+        fig.update_traces(marker=dict(size=10, opacity=0.8, line=dict(width=1, color='DarkGrey')))
+        
+        fig.show()
 
-    # 5. Create the interactive scatter plot
-    fig = px.scatter(
-        combined_df, 
-        x=selected_objectives[0], 
-        y=selected_objectives[1], 
-        color="Type",
-        hover_data=hover_cols,  # Explicitly includes every column from the CSV
-        title="Interactive MOO Simulation Results",
-        labels={
-            selected_objectives[0]: selected_objectives[0].replace('_', ' ').title(),
-            selected_objectives[1]: selected_objectives[1].replace('_', ' ').title()
-        },
-        template="plotly_white"
-    )
-    
-    # Optional: Make markers slightly larger for easier hovering
-    fig.update_traces(marker=dict(size=10, line=dict(width=1, color='DarkGrey')))
-    
-    fig.show()
-
+visualize_MOO_results(["wip", "throughput"])
 
 
+"""
 def adder(a,b):
     x = a + b
     visualize_MOO_results(selected_objectives=["wip", "throughput"])
@@ -166,4 +166,5 @@ def adder(a,b):
 x = adder(2,3)
 
 print(x)
+"""
 
