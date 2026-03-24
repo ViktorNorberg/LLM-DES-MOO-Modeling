@@ -1,5 +1,5 @@
 
-from matplotlib import pyplot as plt
+from matplotlib import path, pyplot as plt
 from openai import OpenAI
 from processmining import eventlog, metrics
 from agents.builder import ModelBuilder
@@ -8,7 +8,7 @@ from agents.adapter import Modeladaptor
 from agents.evaluator import Evaluater
 from agents.cpdagent import CPD
 from agents.visualizer import Modelvisualizer
-from helpers.other_helpers import save_model, remove_code_wrappers, retrieve_KPIs, visualize_results
+from helpers.other_helpers import save_model, remove_code_wrappers, retrieve_KPIs, visualize_results, inspect_code
 from helpers.mermaid_renderer import render_mermaid_to_png
 import pandas as pd
 import time
@@ -17,8 +17,6 @@ from dotenv import load_dotenv
 import os
 
 load_dotenv()
-
-#test
 
 api_key= os.getenv("OPENAI_KEY")
 
@@ -29,7 +27,7 @@ final_path = Path("results")
 buffers_info_specific = "PostLoadingBuffer(Capacity = 2, processtime = 10), PostConveyorBuffer(Capacity = 2, processtime = 10), PostWashingBuffer(Capacity = 2, processtime = 10), PrePress1Buffer(Capacity = 3, processtime = 32), PrePress2Buffer(Capacity = 3, processtime = 32), " \
 "PostPress1&Press2Buffer(Capacity = 3, processtime = 32)"
 defect_info = "Defect rate = 0.089, defect sink = defect,initiated at Qualitystation"
-cpd_info ="1. The presses need to have a processtime of at least 60s. 2. " # All buffer capacities musst be kept at the same original level.
+cpd_info ="1. The presses need to have a processtime of at least 60s. 2. " # All buffer capacities must be kept at the same original level.
 
 def main() -> None:
     df_raw = eventlog.load(file_path_eventlog)
@@ -57,6 +55,11 @@ def main() -> None:
     save_model(clean_initial_model,final_path, "initial_model.py")
     init_model_path = os.path.join(final_path,"initial_model.py")
 
+    print("Inspecting initial model for errors...")
+
+    inspected_initial_model = inspect_code(clean_initial_model, client, "initial_model.py")
+    clean_inspected_initial_model = remove_code_wrappers(inspected_initial_model)
+
     # Manual adaptation
     manual = input("Do you want to manually edit the initial model before proceeding? (y/n): ").strip().lower()
     if manual == 'y':
@@ -64,12 +67,12 @@ def main() -> None:
         input()  # wait for user confirmation
         # reload their edits
         with open(init_model_path, 'r', encoding='utf-8') as f:
-            clean_initial_model = f.read()
+            clean_inspected_initial_model = f.read()
         print("Loaded your manually adapted model.")
 
     # Visualize initial model into flow chart
     visualizer = Modelvisualizer(client)
-    mermaid_code = visualizer.visualize_agent(clean_initial_model)
+    mermaid_code = visualizer.visualize_agent(clean_inspected_initial_model)
     mmd_path = os.path.join(final_path, "model_visualization.mmd")
     png_path = os.path.join(final_path, "model_visualization.png")
     with open(mmd_path, "w", encoding="utf-8") as f:
@@ -80,11 +83,7 @@ def main() -> None:
 
     print("Evaluating initial model...")
 
-    kpi_original = retrieve_KPIs(clean_initial_model, "Original model")
-
-    #FIXA EN BÄTTRE INSPECTOR FUNCTION HÄR
-    
-
+    kpi_original = retrieve_KPIs(clean_inspected_initial_model, "Original model")
 
     results = []
     results.append(kpi_original)
@@ -92,7 +91,7 @@ def main() -> None:
 
     optimizer = Modeloptimizer(client)
     suggestions = optimizer.optimize(
-        model_code = clean_initial_model,
+        model_code = clean_inspected_initial_model,
     )
     
     

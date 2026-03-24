@@ -5,6 +5,7 @@ from agents.inspector import Modelinspector
 import re
 import matplotlib.pyplot as plt
 import numpy as np
+from pathlib import Path
 
 def save_model(model_content, save_path, filename):
     full_path = os.path.join(save_path, filename)
@@ -189,13 +190,15 @@ def visualize_results(results, save_path: str | None = None):
 
     return fig
 
-def inspect_code(code, client, file_name):
+def inspect_code(code, client, file_name: str):
 
     # Iterative Debugging Loop
 
     max_attempts = 5
     attempt = 0
     error_message = None
+    path = Path("results")
+    
 
     inspector = Modelinspector(client)
 
@@ -214,7 +217,7 @@ def inspect_code(code, client, file_name):
             print("Run successful! The code is without errors. ")
             save_model(code, path, file_name)
 
-            break 
+            return code
         except Exception as e:
             error_message = str(e)
             print(f"Attempt {attempt + 1} failed, this is the error message:\n\n {error_message}\n\n, repairing code...")
@@ -222,3 +225,5 @@ def inspect_code(code, client, file_name):
             if attempt == max_attempts:
                 print("Maximum fix attempts reached. Please fix the code manually.")
                 return None
+            
+    

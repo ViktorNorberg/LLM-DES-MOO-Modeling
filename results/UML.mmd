@@ -1,32 +1,39 @@
 flowchart TD
-Input_Vars["**Input Variables**<br/>Buffer capacities for all DelayBuffer instances<br/>Values discrete {1-10}"]
-MOO_Optimizer["**MOO Optimizer**<br/>Initialize population<br/>Main optimization loop"]
-Population["**Population**<br/>Set of candidate buffer configurations"]
-Constraint_Checker["**Constraint Checker**<br/>Ensure integer caps in {1-10}<br/>Reject invalid individuals"]
-Parameter_Applier["**Parameter Applier**<br/>Map an individual to buffer cap values<br/>Set DelayBuffer cap attributes before run"]
-Simulation_Runner["**Simulation Runner**<br/>Parallel execute run_simulation function<br/>Manage random seeds warmup and measurement"]
-Simulation_Model["**Simulation Model**<br/>Existing run_simulation implementation<br/>Contains Machine and DelayBuffer classes and routing"]
-Objective_Evaluator["**Objective Evaluator**<br/>Extract throughput and WIP from result<br/>Objectives throughput maximize and WIP minimize"]
-Evolutionary_Operators["**Evolutionary Operators**<br/>Selection crossover mutation<br/>Diversity and Pareto preserving mechanisms"]
-Pareto_Archive["**Pareto Front**<br/>Archive of non dominated solutions<br/>Updated each generation"]
-Results_Aggregator["**Results Aggregator**<br/>Collect KPI energy and bottleneck per solution<br/>Export Pareto recommendations"]
-Stop_Criterion["**Stop Criterion**<br/>Max generations or time or convergence threshold"]
-Final_Output["**Final Output**<br/>Pareto set of buffer capacities<br/>Recommended configurations for manager"]
+SimulationModel["**Simulation Model**<br/>Attributes env raw_input sink defects delay_buffers machines_list<br/>Methods run_simulation seed warmup measure_until sample_wip reset_machine_stats"]
+DelayBuffer["**DelayBuffer Class**<br/>Attributes cap delay store tokens _in_transit<br/>Methods put get in_transit_count free_capacity _delayed_put _get_and_release"]
+Machine["**Machine Class**<br/>Attributes name input_buffer output_buffer process_time availability mttr working_power waiting_power resource is_up working_time failed_time_total wait_input_time blocked_time active_count processed_count window_wait_time<br/>Methods run _breakdown_cycle waiting_energy_consumption working_energy_consumption"]
+ParameterSpace["**Parameter Space**<br/>Attributes buffer_names bounds {1-5} discrete<br/>Methods enumerate_candidates map_genes_to_buffers"]
+Individual["**Individual**<br/>Attributes genes buffer_capacities dict fitness_throughput fitness_wip dominated_flag<br/>Methods evaluate mutate crossover encode decode"]
+MOO_Optimizer["**MOO Optimizer**<br/>Attributes population_size generations objectives {wip min throughput max} algorithm NSGA2_like selection mutation crossover<br/>Methods initialize_population evaluate_population select_and_evolve run get_pareto_front"]
+SimulationRunner["**Simulation Runner**<br/>Attributes seed_schedule warmup measure_until parallel_workers<br/>Methods run_case run_batch map_individual_to_simulation collect_metrics"]
+FitnessEvaluator["**Fitness Evaluator**<br/>Attributes objective_weights transform_rules<br/>Methods compute_fitness from_metrics normalize handle_stochastic_replication"]
+ResultCollector["**Result Collector**<br/>Attributes pareto_archive histories run_logs<br/>Methods update_archive save_snapshot export_results"]
+ProductionManager["**Production Manager**<br/>Role consumes Pareto solutions selects candidate tradeoffs interprets KPIs"]
 
-Input_Vars --> MOO_Optimizer
-MOO_Optimizer --> Population
-Population --> Constraint_Checker
-Constraint_Checker --> Parameter_Applier
-Parameter_Applier --> Simulation_Runner
-Simulation_Runner --> Simulation_Model
-Simulation_Model --> Objective_Evaluator
-Objective_Evaluator --> MOO_Optimizer
-MOO_Optimizer --> Evolutionary_Operators
-Evolutionary_Operators --> Population
-Objective_Evaluator --> Pareto_Archive
-MOO_Optimizer --> Pareto_Archive
-Pareto_Archive --> Results_Aggregator
-Objective_Evaluator --> Results_Aggregator
-MOO_Optimizer --> Stop_Criterion
-Stop_Criterion --> Results_Aggregator
-Results_Aggregator --> Final_Output
+%% Data flow and interactions
+MOO_Optimizer -->|initialize population| ParameterSpace
+ParameterSpace -->|produce individuals| Individual
+MOO_Optimizer -->|request evaluation of individuals| SimulationRunner
+Individual -->|provide genes buffer capacities| SimulationRunner
+SimulationRunner -->|instantiate or configure| SimulationModel
+SimulationModel -->|uses classes| DelayBuffer
+SimulationModel -->|uses classes| Machine
+SimulationRunner -->|run run_simulation for seed schedule| SimulationModel
+SimulationModel -->|return metrics throughput wip machine_energy| SimulationRunner
+SimulationRunner -->|pass metrics| FitnessEvaluator
+FitnessEvaluator -->|compute fitness values| MOO_Optimizer
+MOO_Optimizer -->|evolve population| Individual
+MOO_Optimizer -->|store nondominated solutions| ResultCollector
+ResultCollector -->|present Pareto set| ProductionManager
+
+%% Supporting flows for optimization loop
+MOO_Optimizer -->|select candidates| Individual
+Individual -->|crossover mutate| Individual
+MOO_Optimizer -.->|stop criteria generations or budget| ResultCollector
+ProductionManager -->|feedback constraint or preference| MOO_Optimizer
+
+%% Notes on parameter mapping and constraints
+ParameterSpace -.->|enforce discrete bounds {1-5}| SimulationRunner
+SimulationRunner -.->|map genes to DelayBuffer cap attributes| SimulationModel
+
+%% End of diagram
