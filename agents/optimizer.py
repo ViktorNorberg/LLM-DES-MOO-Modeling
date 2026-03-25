@@ -7,6 +7,7 @@ from helpers.other_helpers import remove_code_wrappers, remove_code_wrappers, sa
 from helpers.mermaid_renderer import render_mermaid_to_png
 from helpers.runner import run_MOO_code
 from paretoset import paretoset
+from agents.visualizer import Modelvisualizer
 import pandas as pd
 import plotly.express as px
 
@@ -35,7 +36,8 @@ class Modeloptimizer:
 
         #Generate UML diagram for the MOO algorithm
         print("Generating UML diagram for the MOO algorithm...")
-        UML_diagram = self._generate_UML(model_code, objectives, input_variables)
+        visualizer = Modelvisualizer(self.client)
+        UML_diagram = visualizer._generate_MOO_UML(model_code, objectives, input_variables)
         self.save_UML(UML_diagram, path)
         
         #Generate MOO code
@@ -127,43 +129,6 @@ class Modeloptimizer:
         except Exception as e:
             raise
     
-    def _generate_UML(self, model_code: str, objectives, input_variables,
-        model: str ="gpt-5-mini") -> str:
-        prompt = (
-                "You are an AI assistant that generates UML activity diagrams from natural language."
-                "The UML should include the classes, their attributes, and methods. "
-                "Focus on the parts of the code that are relevant to the following objectives, input variables, and output variables.\n\n"
-                "The provided python code is of a simulation model of a production system"
-                "Please generate a UML digram of an MOO algorithm that will optimize the following simulation"
-                "Your UML diagram should be focused on how the MOO algorithm will interact with the existing code, and how it will optimize it. "
-                f"Here is my Python code:\n\n```python\n {model_code}\n```\n\n"
-                f"MOO objectives: {objectives}\n"
-                f"Input Variables: {input_variables}\n"
-                "Keep the UML diagram simple and understandable for a human production manager"
-
-                 "HARD REQUIREMENTS:\n"
-                "1) Output ONLY Mermaid code: no markdown fences, no ```python blocks, no explanations.\n"
-                "2) The first non-empty line MUST be exactly: flowchart TD\n"
-                "Only answer with the UML diagram in a mermaid code format."
-                "3) IMPORTANT: Never use square brackets [ ] or parentheses ( ) inside a node label. "
-                "Use curly braces { } or just plain text for ranges (e.g., {1-10} instead of [1,10]).\n"
-                "4) Every node must be formatted as: NodeID[\"**Node Name**<br/>Description\"]"
-
-                "Label format:\n"
-                "- Use valid identifiers (letters, digits, underscore) for node IDs.\n"
-                "- ALL node labels must use real line breaks inside the brackets.\n"
-                "- Never output '\\n' or '\\\\n' anywhere in any label\n"
-                "- The first line of every label must be the node name written in **bold**, using Markdown syntax.\n"
-                )
-
-        resp = self.client.chat.completions.create(
-            model=model, 
-            messages=[{"role": "user", "content": prompt}]) 
-            #temperature=0.1)
-        try:
-            return resp.choices[0].message.content
-        except Exception as e:
-            raise
 
     def _generate_code(self, model_code, objectives, input_variables, UMLmmd, algorithm, population_size, generations,
             model ="gpt-5.1"):
@@ -330,7 +295,13 @@ class Modeloptimizer:
             code = remove_code_wrappers(code)
             save_model(code, path, "checked_initial_combined_code.py")
 
-            input("Please review the code manually: 'results/checked_initial_combined_code.py'. Make changes if necessary. Press enter to run the MOO algorithm.")
+            input("Please review the code manually: 'results/checked_initial_combined_code.py'. Make changes if necessary. Press enter to run the MOO algorithm. \n" \
+            "Tip: Run the code in a separate environment with a short simulation time for testing and look at the resultsn\n" \
+            "scenario 1: the code casts an error. Then continue this workflow by pressing enter \n" \
+            "scenario 2: the code runs but the results are no good. Then you may try to find the problem yourself or rerunning the entire workflow\n" \
+            "scenario 3: the code runs and yield seemingly good results. Then continue this workflow by pressing enter \n"
+            "before continuing in scenario 1 or 3, make sure to change back the simulation time to 8 days \n" \
+            "Follow this process to avoid unsatisfactory results from the long MOO run")
 
             print("Running the MOO algorithm...")
             #read the code again after manual review

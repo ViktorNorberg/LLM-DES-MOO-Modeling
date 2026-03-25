@@ -11,7 +11,7 @@ class Modelinspector:
         model="gpt-5.1"):
 
         prompt = (
-            f"You are a Senior Python Developer. Please evaluate the following Python code and the error message from the last execution attempt. "
+            f"You are a Software Developer. Please evaluate the following code and the error message from the last execution attempt. "
             f"This was the original code: {code}"
             f"The previous code failed with the following error:\n"
             f"--- ERROR ---\n{error_message}\n--------------\n"
