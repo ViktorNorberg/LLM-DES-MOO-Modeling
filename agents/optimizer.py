@@ -5,9 +5,10 @@ from openai import OpenAI
 import json
 from helpers.other_helpers import remove_code_wrappers, remove_code_wrappers, save_model
 from helpers.mermaid_renderer import render_mermaid_to_png
-from helpers.runner import run_MOO_code
+from helpers.runner import run_python_code
 from paretoset import paretoset
 from agents.visualizer import Modelvisualizer
+from agents.inspector import Modelinspector
 import pandas as pd
 import plotly.express as px
 
@@ -53,7 +54,7 @@ class Modeloptimizer:
         save_model(clean_initial_combined_model, path, "initial_combined_code.py")
 
         #repair and run the code
-        self.repair_and_run_code(clean_initial_combined_model, path, objectives, input_variables)
+        self.repair_and_run_code(clean_initial_combined_model, path, objectives, input_variables, self.client)
 
         #Extract Pareto-optimal solutions from the MOO results
         pareto_solutions = self._find_pareto_front(selected_objectives, directions)
@@ -179,37 +180,6 @@ class Modeloptimizer:
         
         return resp.choices[0].message.content
 
-    def _inspector(self, combined_code, objectives, input_variables, error_message=None, 
-        model="gpt-5.1"):
-
-        if error_message:
-
-            prompt = (
-                f"You are a Senior Python Developer. Please evaluate the following Python code and the error message from the last execution attempt. "
-                f"This was the original code: {combined_code}"
-                f"The previous code failed with the following error:\n"
-                f"--- ERROR ---\n{error_message}\n--------------\n"
-                f"Please analyze the error and the code, and provide a corrected version. "
-                f"Make sure that the MOO algorithm optimizes these objectives: {objectives}, by changing these input variables: {input_variables}. "
-                "Only output the corrected code, no explanations, no markdown fences."
-                "Make minimal adjustments to the original by only changing the parts of the code that are causing the error, and keep the rest of the code intact. "
-            )
-
-        else:
-            prompt = (
-            "Please evaluate if the following Python code is correct and will run without errors. "
-            "If it is correct, do nothing. If it is incorrect, please adapt it so that it runs correctly. Only answer with the code.\n\n"
-            f"```python\n{combined_code}\n```"
-            f"Make sure that the MOO algorithm optimizes these objectives: {objectives}, by changing these input variables: {input_variables}. "
-            "Output ONLY the corrected Python code. No explanations, no markdown fences."
-            )
-
-        resp = self.client.chat.completions.create(
-            model=model, 
-            messages=[{"role": "user", "content": prompt}], 
-            temperature=0.1
-        )
-        return resp.choices[0].message.content
 
     
     def _choose_objectives(self):
@@ -281,17 +251,18 @@ class Modeloptimizer:
     
 
     
-    def repair_and_run_code(self, code, path, objectives, input_variables):
+    def repair_and_run_code(self, code, path, objectives, input_variables, client):
         # Iterative Debugging Loop
         max_attempts = 6
         attempt = 0
         error_message = None
+        inspector = Modelinspector(client)
 
         while attempt < max_attempts:
             print(f"Inspecting code (Attempt {attempt + 1})...")
 
             # pass the error_message if it exists
-            code = self._inspector(code, objectives, input_variables, error_message)
+            code = inspector._inspect_MOO(code, objectives, input_variables, error_message)
             code = remove_code_wrappers(code)
             save_model(code, path, "checked_initial_combined_code.py")
 
@@ -311,7 +282,7 @@ class Modeloptimizer:
             try:
                 # Assuming run_python_code raises an Exception on failure
                 # or returns a result indicating failure.
-                _ = run_MOO_code(code)
+                _ = run_python_code(code)
                 print("Run successful!")
                 break 
             except Exception as e:

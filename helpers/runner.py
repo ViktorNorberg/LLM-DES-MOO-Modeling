@@ -31,7 +31,7 @@ def run_python_code(code_str: str, timeout = 600):
 
 """
 
-def run_python_code(code_str: str, timeout=7200):
+def run_python_code(code_str: str, timeout=15000):
     # 1. Create the temp file
     tmp_path = None
     try:
@@ -71,14 +71,14 @@ def run_python_code(code_str: str, timeout=7200):
                 pass # Prevent cleanup errors from crashing the main script
 
 
-
+"""
 import subprocess
 import sys
 import tempfile
 import textwrap
 from pathlib import Path
 
-def run_MOO_code(code_str: str, timeout=7200):
+def run_MOO_code(code_str: str, timeout=15000):
     tmp_path = None
     captured_output = [] # We will store lines here to return them at the end
     
@@ -138,3 +138,5 @@ def run_MOO_code(code_str: str, timeout=7200):
                 tmp_path.unlink()
             except Exception:
                 pass
+
+"""
