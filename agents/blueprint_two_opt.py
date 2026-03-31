@@ -35,20 +35,28 @@ class Blueprintoptimizer:
         SIM_TIME = input("How long should the simulation run for in seconds? (e.g. 10000) ")
         WARMUP_SECONDS = input("How long should the warmup period be for the simulation in seconds? (e.g. 100) ")
 
+       
+        
         #Generate MOO code
         print("Generating MOO code...")
-        MOO_code = self._generate_code(MOO_blueprint, objectives, input_variables, algorithm, population_size, generations)
+        MOO_code = self._generate_code(model_code, MOO_blueprint, objectives, input_variables, algorithm, population_size, generations)
         clean_initial_MOO_code = remove_code_wrappers(MOO_code)
         save_model(clean_initial_MOO_code, path, "MOO_initial_code.py")
+
+        #Combine the MOO code with the simulation code
+        print("Combining the MOO code with the simulation code...")
+        combined_code = self._combiner(model_code, MOO_code, selected_objectives, SIM_TIME, WARMUP_SECONDS)
+        clean_initial_combined_model = remove_code_wrappers(combined_code)
+        save_model(clean_initial_combined_model, path, "initial_combined_code.py")
 
         #Generate UML diagram for the MOO algorithm
         print("Generating UML diagram for the MOO algorithm...")
         visualizer = Modelvisualizer(self.client)
-        UML_diagram = visualizer._generate_MOO_UML(clean_initial_MOO_code, objectives, input_variables)
+        UML_diagram = visualizer._generate_MOO_UML(clean_initial_combined_model, objectives, input_variables)
         self.save_UML(UML_diagram, path)
 
         #repair and run the code
-        self.repair_and_run_code(clean_initial_MOO_code, path, objectives, input_variables, self.client)
+        self.repair_and_run_code(clean_initial_combined_model, path, objectives, input_variables, self.client)
 
         #Extract Pareto-optimal solutions from the MOO results
         pareto_solutions = self._find_pareto_front(selected_objectives, directions)
@@ -94,6 +102,7 @@ class Blueprintoptimizer:
                              
 
 
+
     def _suggest_improvements(self, model_code, user_input, pareto_solutions,
         model = "gpt-5-mini",
         response_format={"type": "json_object"}):
@@ -125,19 +134,19 @@ class Blueprintoptimizer:
             raise
     
 
-    def _generate_code(self, MOO_blueprint, objectives, input_variables, algorithm, population_size, generations,
+    def _generate_code(self, model_code, MOO_blueprint, objectives, input_variables, algorithm, population_size, generations,
             model ="gpt-5.1"):
             prompt = (
-                 "You are an AI assistant that generates code for a multi-objective optimization algorithm of a DES simulation model"
+                 "You are an AI assistant that generates code for a multi-objective optimization algorithm"
                  "Your task is to generate an MOO algorithm that optimizes a production line simulation model in Python."
-                 "Please adapt the Python code according to the following instructions"
-                 f"```python\n{MOO_blueprint}\n```\n\n"
+                 f"This is the Python simulation model:\n\n```python\n {model_code}\n```\n\n"
                  f"These are the target objectives of the MOO algorithm: {objectives}\n"
                  f"These are the input variables for the MOO algorithm that can be adjusted: {input_variables}\n"
                  f"Use the {algorithm} algorithm for the MOO, with a population size of {population_size} and {generations} generations. "
-                 "The MOO algortihm is to be written in python using the pymoo library. "
-
+                 "Please modify the following blueprint MOO code according to your instructions"
+                 f"```python\n{MOO_blueprint}\n```\n\n"
                  "only output the code, no explanations, no markdown fences"
+                 "make sure that the MOO code is compatible with the existing simulation code, and that it can be easily integrated with the existing code"
                  
             )
             resp = self.client.chat.completions.create(
@@ -148,6 +157,32 @@ class Blueprintoptimizer:
                 return resp.choices[0].message.content
             except Exception as e:                
                 raise e     
+            
+    
+    def _combiner(self, model_code, MOO_code, selected_objectives, SIM_TIME, WARMUP_SECONDS,
+        model = "gpt-5.1"):
+        prompt = (
+            "You are an AI assistant that combines python code"
+            "The goal is to combine the existing simulation code with the MOO algorithm code. "
+            "The combined code should be a single, working Python file that integrates both the simulation and the MOO algorithm. "
+            "Do not output any explanations or markdown fences. "
+            "Only output the combined Python code."
+            f"Here is the existing simulation code:\n\n```python\n {model_code}\n```\n\n"
+            f"Here is the MOO algorithm code:\n\n```python\n {MOO_code}\n```\n\n"
+            "Make sure that the combined code is properly integrated, with the MOO algorithm being called in the right place, and that all necessary imports and dependencies are included. "
+            f"The simulation will run for {SIM_TIME} seconds with a warmup period of {WARMUP_SECONDS} seconds."
+            "When the combined code is run the MOO algorithm should optimize the simulation code and output all results as a table of the different solutions found by the MOO algorithm, with their corresponding KPI values."
+            "The final combined python code should return a csv file with all the different solutions from every generation found by the MOO algorithm"
+            f"Make sure that the csv file contain KPI values for the selected objectives: {selected_objectives}, the column names should be the same as the objective names. "
+            "Name the csv file 'moo_simulation_results.csv'")
+        
+        resp= self.client.chat.completions.create(
+            model=model, 
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2)
+        
+        return resp.choices[0].message.content
+
 
     
     def _choose_objectives(self):

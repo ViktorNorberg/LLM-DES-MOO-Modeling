@@ -4,6 +4,7 @@ from openai import OpenAI
 from processmining import eventlog, metrics
 from agents.builder import ModelBuilder
 from agents.optimizer import Modeloptimizer
+from agents.blueprint_two_opt import Blueprintoptimizer
 from agents.adapter import Modeladaptor
 from agents.evaluator import Evaluater
 from agents.cpdagent import CPD
@@ -23,6 +24,7 @@ api_key= os.getenv("OPENAI_KEY")
 client = OpenAI(api_key=api_key)
 file_path_eventlog = Path("data/workingtest.csv")
 file_path_blueprintmodel_util = Path("blueprint/blueprint_util.py")
+file_path_blueprintmodel_MOO = Path("blueprint/blueprint_MOO.py")
 final_path = Path("results")
 buffers_info_specific = "PostLoadingBuffer(Capacity = 2, processtime = 10), PostConveyorBuffer(Capacity = 2, processtime = 10), PostWashingBuffer(Capacity = 2, processtime = 10), PrePress1Buffer(Capacity = 3, processtime = 32), PrePress2Buffer(Capacity = 3, processtime = 32), " \
 "PostPress1&Press2Buffer(Capacity = 3, processtime = 32)"
@@ -40,6 +42,7 @@ def main() -> None:
 
     # read-in the blueprint
     blueprint_code = open(file_path_blueprintmodel_util, "r", encoding="utf-8").read()
+    MOO_blueprint = open(file_path_blueprintmodel_MOO, "r", encoding="utf-8").read()
 
     # Build initial model
     builder = ModelBuilder(client)
@@ -89,9 +92,10 @@ def main() -> None:
     results.append(kpi_original)
     print(kpi_original)
 
-    optimizer = Modeloptimizer(client)
+    optimizer = Blueprintoptimizer(client)
     suggestions = optimizer.optimize(
         model_code = clean_inspected_initial_model,
+        MOO_blueprint = MOO_blueprint
     )
     
     
