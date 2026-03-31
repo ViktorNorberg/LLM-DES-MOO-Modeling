@@ -116,6 +116,7 @@ class Modeloptimizer:
                 "Only answer with the instructions in a json format."
                 "The instructions should only contain the input variable settings and corresponding objectives values, no explanations"
                 "The json format should be like this, though the variable names and values should be chosen from the MOO results: { 'instructions': [ {'PostLoadingBuffer': 1, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 1, 'PrePress1Buffer': 1, 'PrePress2Buffer': 1, 'PostPress12Buffer': 1, 'throughput': 28.114285714285717, 'wip': 10.779661016949152}, {'PostLoadingBuffer': 1, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 1, 'PrePress1Buffer': 1, 'PrePress2Buffer': 3, 'PostPress12Buffer': 1, 'throughput': 30.17142857142857, 'wip': 12.836158192090396}] }"
+                f"Make sure that the variable names in the instructions are the same as the ones in the \n\n {pareto_solutions} \n"
                 "Make sure to only output the json object and nothing else. No explanations, no markdown fences."
                 )
         
@@ -142,6 +143,7 @@ class Modeloptimizer:
                  f"Use the {algorithm} algorithm for the MOO, with a population size of {population_size} and {generations} generations. "
                  "The MOO algortihm is to be written in python using the pymoo library. "
                  f"use the UML mmd {UMLmmd} file as guidence to how to implement you MOO algorithm"
+                 "Each evaluation of a input configuration should only be replicated once"
                  "only output the code, no explanations, no markdown fences"
                  "make sure that the MOO code is compatible with the existing simulation code, and that it can be easily integrated with the existing code"
                  
@@ -312,6 +314,8 @@ class Modeloptimizer:
             
         except Exception as e:
             print(f"Error converting JSON to CSV: {e}")
+
+    
 
     def visualize_MOO_results(self, selected_objectives):
         
