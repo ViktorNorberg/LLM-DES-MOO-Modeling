@@ -184,55 +184,46 @@ class Blueprintoptimizer:
         return resp.choices[0].message.content
 
 
-    
+
     def _choose_objectives(self):
-                
-        possible_metrics = ["wip", "throughput", "energy consumption", "lead time", "utilization"]
-        selected_objectives = []
-        directions = []
+        """
+        Allows the user to select from three predefined optimization scenarios.
+        Returns a tuple of (selected_objectives, directions).
+        """
+        print("\n" + "="*30)
+        print("-OPTIMIZATION INITIALIZED-")
+        print("---OBJECTIVE SELECTION---")
+        print("="*30)
+        print("Please choose one of the following optimization scenarios:")
+        print("1. WIP (Min) vs. Throughput (Max)")
+        print("2. WIP (Min) vs. Energy Consumption (Min)")
+        print("3. Throughput (Max) vs. Energy Consumption (Min)")
 
-        print("\n--- Objective Selection ---")
-        print("You need to select 2 objectives to perform Multi-Objective Optimization.")
+        # Dictionary to map choices to the required lists
+        scenarios = {
+            "1": (["wip", "throughput"], ["min", "max"]),
+            "2": (["wip", "energy consumption"], ["min", "min"]),
+            "3": (["throughput", "energy consumption"], ["max", "min"])
+        }
 
-        for i in range(1, 3):  # Runs twice: once for i=1, once for i=2
-            while True:  # Inner loop to handle invalid input for this specific slot
-                print(f"\nSelect Objective #{i}:")
-                for idx, metric in enumerate(possible_metrics, 1):
-                    print(f"{idx}. {metric}")
-                
-                choice = input(f"Enter number (1-{len(possible_metrics)}): ")
-                
-                try:
-                    m_idx = int(choice) - 1
-                    if 0 <= m_idx < len(possible_metrics):
-                        metric_name = possible_metrics[m_idx]
-                        
-                        # Check if they already picked this
-                        if metric_name in selected_objectives:
-                            print(f"'{metric_name}' is already selected. Please pick a different objective.")
-                            continue
-                        
-                        # Ask for Direction
-                        print(f"How should we optimize '{metric_name}'?")
-                        print("1. Minimize")
-                        print("2. Maximize")
-                        dir_choice = input("Choice (1 or 2): ")
-                        direction = "min" if dir_choice == "1" else "max"
-                        
-                        # Store results
-                        selected_objectives.append(metric_name)
-                        directions.append(direction)
-                        
-                        print(f"Slot {i} set to: {direction.upper()} {metric_name}")
-                        break  # Exit inner while loop, move to next 'i' in for loop
-                    else:
-                        print("Invalid selection. Out of range.")
-                except ValueError:
-                    print("Please enter a numerical value.")
+        while True:
+            choice = input("\nEnter scenario number (1, 2, or 3): ").strip()
 
-        print(f"\nFinal configuration: {selected_objectives[0]} ({directions[0]}) vs {selected_objectives[1]} ({directions[1]})\n\n")
+            if choice in scenarios:
+                selected_objectives, directions = scenarios[choice]
+                break
+            else:
+                print("Invalid choice. Please enter 1, 2, or 3.")
+
+        # Final confirmation output
+        obj1, obj2 = selected_objectives
+        dir1, dir2 = directions
+        print(f"\n[CONFIRMED] Scenario {choice} loaded:")
+        print(f" -> Objective 1: {obj1.upper()} ({dir1.upper()})")
+        print(f" -> Objective 2: {obj2.upper()} ({dir2.upper()})")
+        print("-" * 30 + "\n")
+
         return selected_objectives, directions
-    
 
 
     def _find_pareto_front(self,selected_objectives, directions):

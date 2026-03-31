@@ -12,11 +12,8 @@ from pymoo.operators.sampling.rnd import IntegerRandomSampling
 from pymoo.termination import get_termination
 from pymoo.optimize import minimize
 import csv
-from multiprocessing.pool import ThreadPool
 from pymoo.core.problem import StarmapParallelization
 
-pool = ThreadPool(8) 
-runner = StarmapParallelization(pool.starmap)
 
 
 def run_simulation(seed, caps, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
@@ -233,8 +230,7 @@ def run_nsga2_optimization(
         xl=np.array([1, 1, 1]),
         xu=np.array([10, 10, 10]),
         n_replications=n_replications,
-        base_seed=base_seed,
-        elementwise_runner = runner
+        base_seed=base_seed
     )
 
     sampling = IntegerRandomSampling()
