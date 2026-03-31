@@ -13,6 +13,7 @@ testmermaid.py
 testPareto.py
 TestTheOptimizer.py
 working_sim_model.py
+optimizer_test.py
 results/
 *.csv
 *.mmd

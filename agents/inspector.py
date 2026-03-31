@@ -4,8 +4,11 @@ from openai import OpenAI
 
 
 class Modelinspector:
+    
     def __init__(self, client: OpenAI):
         self.client = client
+
+
 
     def _inspect(self, code, error_message,
         model="gpt-5.1"):
@@ -26,6 +29,9 @@ class Modelinspector:
             temperature=0.1
         )
         return resp.choices[0].message.content
+
+
+
     
     def _inspect_MOO(self, combined_code, objectives, input_variables, error_message=None, 
         model="gpt-5.1"):
