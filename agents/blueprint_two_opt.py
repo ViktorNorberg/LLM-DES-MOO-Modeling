@@ -26,8 +26,8 @@ class Blueprintoptimizer:
         objectives = f" {selected_objectives[0]} ({directions[0]}) and {selected_objectives[1]} ({directions[1]})"
 
         # Let the user specify the input variables for the MOO algorithm, their ranges, and whether they are discrete or continuous
-        input_variables = input("What are the input variables that can be changed in the model? (e.g. buffer sizes, processing times, etc.) Please specify the range of values, and if the variable is discrete or continuous, for each variable as well. (e.g. Buffer 1 on the range [1,10] (discrete variable), buffer 2 on the range [1,10] (discrete variable) etc.) ")
-        
+        input_variables = self.choose_input_variables()
+
         # Let the user choose the MOO algorithm to use, the population size, and the number of generations for the MOO algorithm
         algorithm = input("Which MOO algorithm would you like to use? (e.g. NSGA-II, MOEA/D, AGEMOEA etc.) ")
         population_size = input("What population size would you like to use for the MOO algorithm? (e.g. 100) ")
@@ -224,6 +224,49 @@ class Blueprintoptimizer:
         print("-" * 30 + "\n")
 
         return selected_objectives, directions
+    
+
+    def choose_input_variables(self):
+
+        print("\n" + "="*32)
+        print("---INPUT VARIABLES SELECTION---")
+        print("="*32)
+        print("Please choose one of the following approaches to optimizing your selected objectives:")
+        print("1. Find the best buffer configuration")
+        print("2. Reduce process time")
+        print("3. Increase availability")
+
+        # Dictionary to map choices to the required lists
+        scenarios = {
+            "1": ("All buffer capacities. Discrete values on the range "),
+            "2": ("All machine process times. Continous values on the range"), # försök få in procentuella förändringar istället för en range
+            "3": ("All machine availability. Continous values on the range")
+        }
+        while True:
+                choice = input("\nEnter scenario number (1, 2, or 3): ").strip()
+
+                if choice == "1":
+                    range = input("\nEnter the input range of the buffer capacities (e.g. 1-10)")
+                    input_variables = scenarios[choice] + range
+                    break
+                if choice == "2":
+                    range = input("\nEnter the range of process time")
+                    input_variables = scenarios[choice] + range
+                    break
+                if choice == "3":
+                    range = input("\nEnter the range of availability")
+                    input_variables = scenarios[choice] + range
+                    break
+                else:
+                    print("Invalid choice. Please enter 1, 2, or 3.")
+
+        print(f"\n[CONFIRMED] Scenario {choice} loaded:")
+        print(f"The MOO algorithm will use these input variables to optimize the objectives:")
+        print(f"{input_variables}")
+        print("-" * 30 + "\n")
+        return input_variables
+
+
 
 
     def _find_pareto_front(self,selected_objectives, directions):
