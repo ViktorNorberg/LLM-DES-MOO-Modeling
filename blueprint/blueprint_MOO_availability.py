@@ -174,7 +174,7 @@ def run_simulation(seed, flags, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNT
 
 class AvailabilityIncreaseProblem(Problem):
 
-   """
+    """
     Multi-objective optimization problem for machine availability increases.
     Decision variables (binary flags, 0 or 1):
         x[0] = M1 availability increase 5% flag
@@ -182,28 +182,35 @@ class AvailabilityIncreaseProblem(Problem):
         x[2] = M3_parallel availability increase 5% flag
         x[3] = M4_parallel availability increase 5% flag
         x[4] = M5 availability increase 5% flag
-        
-
+    
     Objectives:
         f1 = average WIP (to be minimized)
         f2 = -average throughput (negative because pymoo minimizes)
     """
 
-    def __init__(self, n_var=3, n_obj=2, n_constr=0,
-                 xl=None, xu=None,
-                 n_replications=5,
-                 base_seed=RANDOM_SEED):
+    def __init__(
+        self,
+        n_var=5,
+        n_obj=2,
+        n_constr=0,
+        xl=None,
+        xu=None,
+        n_replications=5,
+        base_seed=RANDOM_SEED,
+    ):
         if xl is None:
-            xl = np.array([1] * n_var, dtype=int)
+            xl = np.array([0] * n_var, dtype=int)
         if xu is None:
-            xu = np.array([10] * n_var, dtype=int)
+            xu = np.array([1] * n_var, dtype=int)
 
-        super().__init__(n_var=n_var,
-                         n_obj=n_obj,
-                         n_constr=n_constr,
-                         xl=xl,
-                         xu=xu,
-                         elementwise_evaluation=False)
+        super().__init__(
+            n_var=n_var,
+            n_obj=n_obj,
+            n_constr=n_constr,
+            xl=xl,
+            xu=xu,
+            elementwise_evaluation=False,
+        )
 
         self.n_replications = n_replications
         self.base_seed = base_seed
@@ -258,7 +265,6 @@ def run_nsga2_optimization(
     )
 
     sampling = IntegerRandomSampling()
-
     crossover = SBX(prob=0.9, eta=15)
     mutation = PM(prob=1.0 / problem.n_var, eta=20)
 
