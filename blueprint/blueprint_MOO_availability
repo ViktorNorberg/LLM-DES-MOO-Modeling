@@ -12,11 +12,28 @@ from pymoo.operators.sampling.rnd import IntegerRandomSampling
 from pymoo.termination import get_termination
 from pymoo.optimize import minimize
 import csv
-from pymoo.core.problem import StarmapParallelization
+
+
+# Baseline availabilities from the given simulation model
+BASE_AVAILABILITIES = {
+    "M1": 90.49,
+    "M2": 100.0,
+    "M3_parallel": 80.89,
+    "M4_parallel": 97.79,
+    "M5": 87.79,
+}
+
+MACHINE_ORDER = [
+    "M1",
+    "M2",
+    "M3_parallel",
+    "M4_parallel",
+    "M5",
+]
 
 
 
-def run_simulation(seed, caps, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
+def run_simulation(seed, flags, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
     random.seed(seed)
     env = simpy.Environment()
 
@@ -36,16 +53,24 @@ def run_simulation(seed, caps, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTI
     # final serial segment:
     #   buffer3 -> M5 -> sink
 
-    # Set changable parameters, in this case buffer capacities
-    caps = list(caps)[:3]
-    cap_buffer1, cap_buffer2, cap_buffer3 = caps
-
+   # Compute new availabilities and check constraint (no availability > 100)
+    new_avail = {}
+    for name, flag in zip(MACHINE_ORDER, flags):
+        base = BASE_AVAILABILITIES[name]
+        if flag == 1:
+            val = base + 5.0
+        else:
+            val = base
+        if val > 100.0:
+            return None
+        new_avail[name] = val
+    
     
 
     #Buffers between serial machines
-    buffer1 = DelayBuffer(env, cap=cap_buffer1, delay=10)  # between M1 and M2
-    buffer2 = DelayBuffer(env, cap=cap_buffer2, delay=10)  # between M2 and parallel section
-    buffer3 = DelayBuffer(env, cap=cap_buffer3, delay=10)  # between parallel section and M5
+    buffer1 = DelayBuffer(env, cap=2, delay=10)  # between M1 and M2
+    buffer2 = DelayBuffer(env, cap=2, delay=10)  # between M2 and parallel section
+    buffer3 = DelayBuffer(env, cap=2, delay=10)  # between parallel section and M5
 
     # Raw input and sinks
     raw_input = simpy.Store(env, capacity=1000) # large to avoid starvation
@@ -62,22 +87,22 @@ def run_simulation(seed, caps, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTI
     branch2_out = simpy.Store(env, capacity=2)  # output of M4
 
     M1 = Machine(env, "M1", input_buffer=raw_input, output_buffer=buffer1,
-        process_time=5, availability=97.79, mttr=74, 
+        process_time=5, availability=new_avail["M1"], mttr=74,
         working_power=kwh_per_sec(1.28), waiting_power=kwh_per_sec(1.25),
     )
 
     M2 = Machine(env, "M2", input_buffer=buffer1, output_buffer=buffer2,
-        process_time=20, availability=95.0, mttr=100,
+        process_time=20, availability=new_avail["M2"], mttr=100,
         working_power=kwh_per_sec(1.28), waiting_power=kwh_per_sec(1.25),
     )
 
     M3_parallel = Machine(env, "M3parallel", input_buffer=buffer2, output_buffer=branch1_out,
-        process_time=15, availability=90.0, mttr=80,
+        process_time=15, availability=new_avail["M3_parallel"], mttr=80,
         working_power=kwh_per_sec(1.28), waiting_power=kwh_per_sec(1.25),
     )
 
     M4_parallel = Machine(env, "M4parallel", input_buffer=buffer2, output_buffer=branch2_out,
-        process_time=15, availability=90.0, mttr=80,
+        process_time=15, availability=new_avail["M4_parallel"], mttr=80,
         working_power=kwh_per_sec(1.28), waiting_power=kwh_per_sec(1.25),
     )
 
@@ -85,7 +110,7 @@ def run_simulation(seed, caps, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTI
     merger(env, branch1_out, branch2_out, buffer3)
 
     M5 = Machine(env, "M5", input_buffer=buffer3, output_buffer=sink,
-        process_time=25, availability=92.0, mttr=90,
+        process_time=25, availability=new_avail["M5"], mttr=90,
         working_power=kwh_per_sec(1.28), waiting_power=kwh_per_sec(1.25),
         defect_rate=0.089, defect_sink=defects,
     )
@@ -147,14 +172,17 @@ def run_simulation(seed, caps, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTI
         
     return result
 
-class BufferCapacityProblem(Problem):
+class AvailabilityIncreaseProblem(Problem):
 
-    """
-    Multi-objective optimization problem for buffer capacities using NSGA-II.
-    Decision variables:
-        x[0] = buffer1 cap
-        x[1] = buffer2 cap
-        x[2] = buffer3 cap
+   """
+    Multi-objective optimization problem for machine availability increases.
+    Decision variables (binary flags, 0 or 1):
+        x[0] = M1 availability increase 5% flag
+        x[1] = M2 availability increase 5% flag
+        x[2] = M3_parallel availability increase 5% flag
+        x[3] = M4_parallel availability increase 5% flag
+        x[4] = M5 availability increase 5% flag
+        
 
     Objectives:
         f1 = average WIP (to be minimized)
@@ -189,16 +217,14 @@ class BufferCapacityProblem(Problem):
         
 
         for i in range(n_individuals):
-            x = X[i]
-            
-            caps = [int(v) for v in x[:3]]
+            flags= X[i, :]
 
             throughputs = []
             wips = []
 
             for r in range(self.n_replications):
                 seed = self.base_seed + r + random.randint(0, 1000000)
-                res = run_simulation(seed, caps, WARMUP_SECONDS, MEASURE_UNTIL)
+                res = run_simulation(seed, flags, WARMUP_SECONDS, MEASURE_UNTIL)
                 throughputs.append(res["overall"]["throughput"])
                 wips.append(res["overall"]["wip"])
 
@@ -218,17 +244,15 @@ def run_nsga2_optimization(
     verbose=True
 ):
     """
-    Run NSGA-II on the buffer capacity optimization problem.
-
     Returns:
         res: pymoo result object containing the Pareto front and decision variables.
     """
 
-    problem = BufferCapacityProblem(
-        n_var=3,
+    problem = AvailabilityIncreaseProblem(
+        n_var=5,
         n_obj=2,
-        xl=np.array([1, 1, 1]),
-        xu=np.array([10, 10, 10]),
+        xl=np.array([0]*5),
+        xu=np.array([1]*5),
         n_replications=n_replications,
         base_seed=base_seed
     )
@@ -261,17 +285,24 @@ def run_nsga2_optimization(
 
 def export_history_to_csv(result, filename="moo_simulation_results.csv"):
     """
-    Export all solutions from every generation (including initial population)
+    Export all feasible solutions from every generation (including initial population)
     with their KPIs and decision variables to a CSV file.
-    Columns:
-        gen, ind, buffer1, buffer2, buffer3
+
+    Infeasible points are detected by their large penalty objective values and are skipped.
+
+    Column names for decision variables include information on how much
+    the availability is increased for each machine.
     """
+
+
     fieldnames = [
         "gen",
         "ind",
-        "buffer1",
-        "buffer2",
-        "buffer3",
+        "M1_availability_increase5percent_flag",
+        "M2_availability_increase5percent_flag",
+        "M3_availability_increase5percent_flag",
+        "M4_availability_increase5percent_flag",
+        "M5_availability_increase5percent_flag",
         "wip",
         "throughput"
     ]
@@ -283,16 +314,19 @@ def export_history_to_csv(result, filename="moo_simulation_results.csv"):
         pop = algo.pop
         X = pop.get("X")
         F = pop.get("F")
+
         for ind_idx, (x, f) in enumerate(zip(X, F)):
-            caps = [int(v) for v in x[:3]]
             wip = float(f[0])
             throughput = float(-f[1])  # stored as -throughput in objectives
+            flags = [int(v) for v in x[:5]]
             row = {
                 "gen": gen_idx,
                 "ind": ind_idx,
-                "buffer1": caps[0],
-                "buffer2": caps[1],
-                "buffer3": caps[2],
+                "M1_availability_increase5percent_flag": flags[0],
+                "M2_availability_increase5percent_flag": flags[1],
+                "M3_availability_increase5percent_flag": flags[2],
+                "M4_availability_increase5percent_flag": flags[3],
+                "M5_availability_increase5percent_flag": flags[4],
                 "wip": wip,
                 "throughput": throughput
             }

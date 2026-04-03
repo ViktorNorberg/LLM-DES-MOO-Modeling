@@ -24,7 +24,9 @@ api_key= os.getenv("OPENAI_KEY")
 client = OpenAI(api_key=api_key)
 file_path_eventlog = Path("data/workingtest.csv")
 file_path_blueprintmodel_util = Path("blueprint/blueprint_util.py")
-file_path_blueprintmodel_MOO = Path("blueprint/blueprint_MOO.py")
+file_path_blueprintmodel_MOO_buffer = Path("blueprint/blueprint_MOO_buffer.py")
+file_path_blueprintmodel_MOO_batch = Path("blueprint/blueprint_MOO_batch.py")
+file_path_blueprintmodel_MOO_availability = Path("blueprint/blueprint_MOO_availability.py")
 final_path = Path("results")
 buffers_info_specific = "PostLoadingBuffer(Capacity = 2, processtime = 10), PostConveyorBuffer(Capacity = 2, processtime = 10), PostWashingBuffer(Capacity = 2, processtime = 10), PrePress1Buffer(Capacity = 3, processtime = 32), PrePress2Buffer(Capacity = 3, processtime = 32), " \
 "PostPress1&Press2Buffer(Capacity = 3, processtime = 32)"
@@ -40,9 +42,11 @@ def main() -> None:
     print("")
     print(sequence_text)
 
-    # read-in the blueprint
+    # read-in the blueprints
     blueprint_code = open(file_path_blueprintmodel_util, "r", encoding="utf-8").read()
-    MOO_blueprint = open(file_path_blueprintmodel_MOO, "r", encoding="utf-8").read()
+    MOO_blueprint_buffer = open(file_path_blueprintmodel_MOO_buffer, "r", encoding="utf-8").read()
+    MOO_blueprint_batch = open(file_path_blueprintmodel_MOO_batch, "r", encoding="utf-8").read()
+    MOO_blueprint_availability = open(file_path_blueprintmodel_MOO_availability, "r", encoding="utf-8").read()
 
     # Build initial model
     builder = ModelBuilder(client)
@@ -95,7 +99,9 @@ def main() -> None:
     optimizer = Blueprintoptimizer(client)
     suggestions = optimizer.optimize(
         model_code = clean_inspected_initial_model,
-        MOO_blueprint = MOO_blueprint
+        MOO_blueprint_buffer = MOO_blueprint_buffer,
+        MOO_blueprint_batch = MOO_blueprint_batch,
+        MOO_blueprint_availability = MOO_blueprint_availability
     )
     
     
