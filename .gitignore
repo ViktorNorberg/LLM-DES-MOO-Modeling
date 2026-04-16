@@ -16,6 +16,7 @@ working_sim_model.py
 optimizer_test.py
 plotFacts.py
 calculateHV.py
+testSCORE.py
 results/
 *.csv
 *.mmd
