@@ -33,7 +33,7 @@ class Blueprintoptimizer:
               
         #Generate MOO code
         print("\nGenerating MOO code...")
-        
+
         if choice == "1":
             MOO_blueprint = MOO_blueprint_buffer
         elif choice == "2":
@@ -143,17 +143,17 @@ class Blueprintoptimizer:
     def _generate_code(self, model_code, MOO_blueprint, objectives, decision_variables, population_size, generations,
             model ="gpt-5.1"):
             prompt = (
-                 "You are an AI assistant that generates code for a multi-objective optimization algorithm"
+                 "You are an AI assistant that generates code for a multi-objective optimization (MOO) algorithm"
                  "Your task is to generate an MOO algorithm that optimizes a production line simulation model in Python."
                  f"This is the Python simulation model:\n\n```python\n {model_code}\n```\n\n"
                  f"These are the target objectives of the MOO algorithm: {objectives}\n"
-                 f"These are the decision variables for the MOO algorithm that can be adjusted: {decision_variables}\n"
+                 f"These are the decision variables of the MOO algorithm that can be adjusted: {decision_variables}\n"
                  f"If a point violates the constraint, dont evaluate its objective values, and the datapoint should not be in the results csv file"
                  f"The MOO algortihm should have a population size of {population_size} and {generations} generations. "
                  "Please modify the following blueprint MOO code according to your instructions."
                  f"```python\n{MOO_blueprint}\n```\n\n"
                  "Only output the MOO code, no explanations, no markdown fences, don't include the simulation code"
-                 "make sure that the MOO code is compatible with the existing simulation code, and that it can be easily integrated with the existing code"
+                 "Make sure that the MOO code is compatible with the existing simulation code, and that it can be easily integrated"
                  
             )
             resp = self.client.chat.completions.create(
@@ -257,9 +257,12 @@ class Blueprintoptimizer:
 
                 if choice == "1":
                     range = input("\nEnter the input range of the buffer capacities (e.g. 1-10)")
-                    constraint = input("\nOPTIONAL: add a contraint of maximum total buffer capacity (e.g. 30): ")
-                    constraint = "The total buffer capacity of all buffers is constrained to: " + constraint
-                    decision_variables = scenarios[choice] + range + constraint
+                    constraint = input("\nOPTIONAL: add a contraint of maximum total buffer capacity (e.g. 30), leave blank if none: ")
+                    if constraint:
+                        constraint = " The total buffer capacity of all buffers is constrained to: " + constraint
+                        decision_variables = scenarios[choice] + range + constraint
+                    else:
+                        decision_variables = scenarios[choice] + range
                     break
                 if choice == "2":
                     batch_info = input("\nSome information on the batches: ")

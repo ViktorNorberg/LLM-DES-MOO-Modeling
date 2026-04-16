@@ -194,7 +194,7 @@ def inspect_code(code, client, file_name: str):
 
     # Iterative Debugging Loop
 
-    max_attempts = 5
+    max_attempts = 6
     attempt = 0
     error_message = None
     path = Path("results")

@@ -219,11 +219,7 @@ def run_nsga2_optimization(
 ):
     """
     Run NSGA-II on the buffer capacity optimization problem.
-
-    Returns:
-        res: pymoo result object containing the Pareto front and decision variables.
     """
-
     problem = BufferCapacityProblem(
         n_var=3,
         n_obj=2,
@@ -277,9 +273,9 @@ def export_history_to_csv(result, filename="moo_simulation_results.csv"):
     fieldnames = [
         "gen",
         "ind",
-        "buffer1",
-        "buffer2",
-        "buffer3",
+        "buffer1_cap",
+        "buffer2_cap",
+        "buffer3_cap",
         "wip",
         "throughput"
     ]
@@ -298,9 +294,9 @@ def export_history_to_csv(result, filename="moo_simulation_results.csv"):
             row = {
                 "gen": gen_idx,
                 "ind": ind_idx,
-                "buffer1": caps[0],
-                "buffer2": caps[1],
-                "buffer3": caps[2],
+                "buffer1_cap": caps[0],
+                "buffer2_cap": caps[1],
+                "buffer3_cap": caps[2],
                 "wip": wip,
                 "throughput": throughput
             }

@@ -31,7 +31,7 @@ final_path = Path("results")
 buffers_info_specific = "PostLoadingBuffer(Capacity = 2, processtime = 10), PostConveyorBuffer(Capacity = 2, processtime = 10), PostWashingBuffer(Capacity = 2, processtime = 10), PrePress1Buffer(Capacity = 3, processtime = 32), PrePress2Buffer(Capacity = 3, processtime = 32), " \
 "PostPress1&Press2Buffer(Capacity = 3, processtime = 32)"
 defect_info = "Defect rate = 0.089, defect sink = defect,initiated at Qualitystation"
-cpd_info ="1. The presses need to have a processtime of at least 60s. 2. " # All buffer capacities must be kept at the same original level.
+cpd_info = "1. The presses need to have a processtime of at least 60s. 2. " # All buffer capacities must be kept at the same original level.
 
 def main() -> None:
     df_raw = eventlog.load(file_path_eventlog)
@@ -88,7 +88,7 @@ def main() -> None:
     print(f"Flow chart saved to: {png_path}")
 
 
-    print("Evaluating initial model...")
+    print("\nEvaluating initial model...")
 
     kpi_original = retrieve_KPIs(clean_inspected_initial_model, "Original model")
 

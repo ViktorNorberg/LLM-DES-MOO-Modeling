@@ -293,6 +293,7 @@ def run_simulation(seed, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
     # - They can be used:
     #     - as outputs of parallel machines before a merger, or
     #     - as temporary queues for splitters/mergers.
+    # - The helper stores should have capacity equal to 2
     branch1_out = simpy.Store(env, capacity=2)  # output of M3
     branch2_out = simpy.Store(env, capacity=2)  # output of M4
 

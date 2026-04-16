@@ -14,6 +14,8 @@ testPareto.py
 TestTheOptimizer.py
 working_sim_model.py
 optimizer_test.py
+plotFacts.py
+calculateHV.py
 results/
 *.csv
 *.mmd

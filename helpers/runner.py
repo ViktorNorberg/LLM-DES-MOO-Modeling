@@ -31,7 +31,7 @@ def run_python_code(code_str: str, timeout = 600):
 
 """
 
-def run_python_code(code_str: str, timeout=15000):
+def run_python_code(code_str: str, timeout=40000):
     # 1. Create the temp file
     tmp_path = None
     try:

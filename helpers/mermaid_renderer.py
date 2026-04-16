@@ -15,7 +15,7 @@ def render_mermaid_to_png(mmd_path, output_path, client):
     if shutil.which("npx") is None:
         raise RuntimeError("npx not found. Install Node.js to use this renderer.")
     
-    max_attempts = 3
+    max_attempts = 6
     attempt = 0
     inspector = Modelinspector(client)
 
