@@ -81,10 +81,10 @@ class Blueprintoptimizer:
         print(suggestions)
         print("\n\n")
 
-        explanation = self._explain_suggestions(suggestions, pareto_solutions, model_code)
+        #explanation = self._explain_suggestions(suggestions, pareto_solutions, model_code)
 
-        print(explanation)
-        print("")
+        #print(explanation)
+        #print("")
 
         return suggestions
     

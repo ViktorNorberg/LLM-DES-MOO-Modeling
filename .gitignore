@@ -17,6 +17,7 @@ optimizer_test.py
 plotFacts.py
 calculateHV.py
 testSCORE.py
+testBOTTLENECK.py
 results/
 *.csv
 *.mmd

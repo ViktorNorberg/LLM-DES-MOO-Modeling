@@ -93,13 +93,13 @@ class CostBenefitProblem(Problem):
         out["F"] = F
         out["G"] = G # <--- Pass constraints back to pymoo
 
-def export_history_to_csv(result, filename="moo_cost_benefit_results.csv"):
-    fieldnames = ["gen", "ind"]
+def export_history_to_csv(result, filename="SCORE_results.csv"):
+    fieldnames = []
     for cat in ["Avail_Inc_10per", "MTTR_Red_10per", "Proc_Red_10per"]:
         for m in MACHINE_ORDER:
             fieldnames.append(f"{m}_{cat}")
     # Added 'feasible' column to help you track rejected solutions
-    fieldnames.extend(["active_flags", "throughput", "feasible"]) 
+    fieldnames.extend(["active_flags", "throughput"]) 
 
     rows = []
     for gen_idx, algo in enumerate(result.history):
@@ -110,15 +110,13 @@ def export_history_to_csv(result, filename="moo_cost_benefit_results.csv"):
             x = X[ind_idx]
             f = F[ind_idx]
             
-            # Check if individual is feasible (all g <= 0)
-            is_feasible = bool(np.all(G[ind_idx] <= 0)) if G is not None else True
+            
             
             row = {
-                "gen": gen_idx, 
-                "ind": ind_idx, 
+
                 "active_flags": int(f[0]), 
-                "throughput": float(-f[1]),
-                "feasible": is_feasible
+                "throughput": float(-f[1])
+                
             }
             for i, val in enumerate(x):
                 row[fieldnames[i+2]] = int(val)
