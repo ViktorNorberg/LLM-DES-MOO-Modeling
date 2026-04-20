@@ -23,28 +23,57 @@ class BottleneckOptimizer:
 
         WARMUP_SECONDS = 100
         SIM_TIME = 3600
+        top_n_fronts = 5
 
         MOO_code = self._generate_code(model_code, SCORE_blueprint)
         clean_initial_MOO_code = remove_code_wrappers(MOO_code)
         save_model(clean_initial_MOO_code, path, "SCORE_initial_code.py")
 
         #Combine the MOO code with the simulation code
-        print("\nCombining the MOO code with the simulation code...")
+        print("\nCombining the SCORE code with the simulation code...")
         combined_code = self._combiner(model_code, MOO_code, WARMUP_SECONDS, SIM_TIME)
         clean_initial_combined_model = remove_code_wrappers(combined_code)
         save_model(clean_initial_combined_model, path, "SCORE_initial_combined_code.py")
 
         self.repair_and_run_code(clean_initial_combined_model, path, WARMUP_SECONDS, SIM_TIME, self.client)
 
-        _ = self._find_pareto_front()
+        _ = self._find_pareto_front(top_n_fronts)
 
         frequency_analysis = self.get_flag_frequencies()
 
+        print("\nSee the results of the SCORE analysis in 'SCORE_results.csv'")
+        print(f"And the top rank {top_n_fronts} solutions in: 'SCORE_pareto_solutions.csv'")
 
         suggestions = self._suggest_improvements(clean_initial_combined_model, frequency_analysis)
 
+        print("\nSuggested changes from the bottleneck analysis: ")
+        print("")
+        print(suggestions)
+        print("\n")
+
+        explanations = self._explain_suggestions(suggestions, model_code)
+        print("\n")
+        print(explanations)
+        print("")
+
         return suggestions
     
+
+    def _explain_suggestions(self, suggestions, model_code,
+        model = "gpt-5-mini"):
+        prompt = (
+            "You are an AI assistant that explains suggestions for improving a production system. "
+            "The suggestions are based on the results of a bottleneck analysis, and are provided in a json format. "
+            "Please explain the reasoning behind these suggestions in a way that is understandable for a human production manager. "
+            f"Here is my simulation code of the production system:\n\n```python\n {model_code}\n```\n\n"
+            f"Here are the suggestions in a json format:\n\n {suggestions}\n"
+            "Please provide a clear, concise and short explanation for each suggestion, focusing on how it will improve the production system based on the bottleneck results"
+            "Do not end you answer with a question. "
+        )
+        resp = self.client.chat.completions.create(
+            model=model, 
+            messages=[{"role": "user", "content": prompt}]) 7
+        return resp.choices[0].message.content
 
 
     def _suggest_improvements(self, model_code, frequency_analysis,
@@ -53,7 +82,7 @@ class BottleneckOptimizer:
         prompt = (
                 "You are an AI assistant that suggests improvements to a production system based on the results of a bottleneck analysis. "
                 "The improvements should be based on a frequency analysis of the system bottlenecks"
-                " Please name 3 specific implementable instructions to improve the system. "
+                " Please name 5 specific implementable instructions to improve the system. "
                 "These should be short and concise statements, e.g. 'Increase the availability of the quality station by 10%' "
                 "They should be easily implementable with the existing model. "
                 f"Here is my Python code:\n\n```python\n {model_code}\n```\n\n"
@@ -161,7 +190,7 @@ class BottleneckOptimizer:
                 
     
 
-    def _find_pareto_front(self,top_n_fronts=5):
+    def _find_pareto_front(self,top_n_fronts):
         
         selected_objectives = ["active_flags", "throughput"]
         directions = ["min", "max"]  
