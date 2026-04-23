@@ -29,7 +29,7 @@ def remove_code_wrappers(code):
         code = code[:-3].strip()
     return code
 
-def visualize_results(results, save_path: str | None = None):
+def visualize_results(results, file_name, save_path: str | None = None):
     # ---------- regex patterns ----------
     _RE_NAME   = re.compile(r'^----Results from model:\s*(.*)')
     _RE_TP     = re.compile(r'^Throughput\s*=\s*([\d.]+)')
@@ -183,7 +183,7 @@ def visualize_results(results, save_path: str | None = None):
 
     # save if a path is provided
     if save_path is not None:
-        full_path = os.path.join(save_path, "model_comparison_kpis.png")
+        full_path = os.path.join(save_path, file_name)
         fig.savefig(full_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
         print(f"\nFigure saved to {full_path}")

@@ -18,6 +18,9 @@ plotFacts.py
 calculateHV.py
 testSCORE.py
 testBOTTLENECK.py
+testSCENARIO.py
+testOPTFLOW.py
+
 results/
 *.csv
 *.mmd

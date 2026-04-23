@@ -11,6 +11,7 @@ from agents.visualizer import Modelvisualizer
 from agents.inspector import Modelinspector
 import pandas as pd
 import plotly.express as px
+import time
 
 
 class Blueprintoptimizer:
@@ -267,17 +268,33 @@ class Blueprintoptimizer:
                 if choice == "2":
                     percentage_nr = input("\nEnter the increase in percentage (e.g 5): ")
                     percentage = f"can decrease with {percentage_nr} percent or stay at the same level"
-                    decision_variables = scenarios[choice] + percentage
+                    constraint = input("\nOPTIONAL: add a contraint of how many machines can have decreased process times, leave blank if no constraint: ")
+                    if constraint:
+                        constraint = " At most " + constraint + " machines can have decreased process times."
+                        decision_variables = scenarios[choice] + percentage + constraint
+                    else:
+                        decision_variables = scenarios[choice] + percentage
                     break
                 if choice == "3":
                     percentage_nr = input("\nEnter the increase in percentage (e.g 5): ")
                     percentage = f"can increase with {percentage_nr} percent or stay at the same level"
-                    decision_variables = scenarios[choice] + percentage
+                    constraint = input("\nOPTIONAL: add a contraint of how many machines can have increased availability, leave blank if no constraint: ")
+                    if constraint:
+                        constraint = " At most " + constraint + " machines can have increased availability."
+                        decision_variables = scenarios[choice] + percentage + constraint
+                    else:
+                        decision_variables = scenarios[choice] + percentage
                     break
+
                 if choice == "4":
                     percentage_nr = input("\nEnter the increase in percentage (e.g 5): ")
                     percentage = f"can decrease with {percentage_nr} percent or stay at the same level"
-                    decision_variables = scenarios[choice] + percentage
+                    constraint = input("\nOPTIONAL: add a contraint of how many machines can have decreased MTTR, leave blank if no constraint: ")
+                    if constraint:
+                        constraint = " At most " + constraint + " machines can have decreased MTTR."
+                        decision_variables = scenarios[choice] + percentage + constraint
+                    else:
+                        decision_variables = scenarios[choice] + percentage
                     break
                 else:
                     print("Invalid choice. Please enter 1, 2, 3 or 4.")
@@ -347,9 +364,11 @@ class Blueprintoptimizer:
                 code = f.read()
             
             try:
-            
+                #measure the time it takes to run the code
+                start_time = time.time()
                 _ = run_python_code(code)
-                print("\nRun successful!")
+                end_time = time.time()
+                print(f"\nRun successful! Time taken: {end_time - start_time:.2f} seconds")
                 break 
             except Exception as e:
                 error_message = str(e)

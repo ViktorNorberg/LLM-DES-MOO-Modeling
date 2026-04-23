@@ -294,11 +294,11 @@ def export_history_to_csv(result, filename="moo_simulation_results.csv"):
     Export all feasible solutions from every generation (including initial population)
     with their KPIs and decision variables to a CSV file.
 
-    Infeasible points are detected by their large penalty objective values and are skipped.
-
-    Column names for decision variables include information on how much
-    the availability is increased for each machine.
+    If the MOO algortihm is optimizing which machine to increase availability for,
+    the column names for the decision variables in the csv should be like "washing_machine_availability_increase5%_flag", "press1_availability_increase5%_flag" etc
+    the column name must include information on how much the availability is increased for each machine.
     """
+
 
 
     fieldnames = [

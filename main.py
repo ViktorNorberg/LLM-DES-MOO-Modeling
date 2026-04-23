@@ -10,6 +10,7 @@ from agents.evaluator import Evaluater
 from agents.cpdagent import CPD
 from agents.visualizer import Modelvisualizer
 from agents.bottleneck import BottleneckOptimizer
+from agents.scenariotester import Scenarioagent
 from helpers.other_helpers import save_model, remove_code_wrappers, retrieve_KPIs, visualize_results, inspect_code
 from helpers.mermaid_renderer import render_mermaid_to_png
 import pandas as pd
@@ -32,7 +33,7 @@ final_path = Path("results")
 buffers_info_specific = "PostLoadingBuffer(Capacity = 2, processtime = 10), PostConveyorBuffer(Capacity = 2, processtime = 10), PostWashingBuffer(Capacity = 2, processtime = 10), PrePress1Buffer(Capacity = 3, processtime = 32), PrePress2Buffer(Capacity = 3, processtime = 32), " \
 "PostPress1&Press2Buffer(Capacity = 3, processtime = 32)"
 defect_info = "Defect rate = 0.089, defect sink = defect,initiated at Qualitystation"
-cpd_info = "1. The presses need to have a processtime of at least 60s. " # All buffer capacities must be kept at the same original level.
+cpd_info = "1. The presses need to have a processtime of at least 60s. All buffer capacities must be kept at the same original level."
 
 def main() -> None:
     df_raw = eventlog.load(file_path_eventlog)
@@ -108,7 +109,18 @@ def main() -> None:
         if optimize_choice == "1":
             optimizer = BottleneckOptimizer(client)
             suggestions = optimizer.optimize(model_code = clean_inspected_initial_model, SCORE_blueprint=SCORE_blueprint)
-            _ = 
+            continue_choice = input("Do you want to continue to explore the top ranked bottleneck of the system with specific scenario evaluations? (y/n): ").strip().lower()
+            if continue_choice == 'y':
+                scenarioagent = Scenarioagent(client)
+                _ = scenarioagent.find_scenarios(bottleneck_suggestions=suggestions, model_code=clean_inspected_initial_model, stations_table_md=stations_md, sequence_text=sequence_text, final_path=final_path, results_initial_model=results)
+                print("Exiting program after scenario evaluations.")
+                sys.exit()
+            else:
+                exit_choice = input("Do you want to explore any other optimizations of the system (otherwise the program will exit)? (y/n): ").strip().lower()
+                if exit_choice == 'y':
+                    continue_optimization = True
+                    break
+                else: sys.exit()
             break
         elif optimize_choice == "2":
             optimizer = Blueprintoptimizer(client)
@@ -117,6 +129,7 @@ def main() -> None:
                 MOO_blueprint_buffer = MOO_blueprint_buffer,
                 MOO_blueprint_availability = MOO_blueprint_availability
             )
+            continue_optimization = False
             break
         elif optimize_choice == "3":
             print("Exiting program.")
@@ -124,6 +137,13 @@ def main() -> None:
         else:
             print("Invalid choice. Choose between 1, 2, and 3: ")
     
+    if continue_optimization:
+        optimizer = Blueprintoptimizer(client)
+        suggestions = optimizer.optimize(
+            model_code = clean_inspected_initial_model,
+            MOO_blueprint_buffer = MOO_blueprint_buffer,
+            MOO_blueprint_availability = MOO_blueprint_availability
+        )
     
     print("back in main.py")
 
@@ -145,7 +165,7 @@ def main() -> None:
     
     for idx, step in enumerate(step_list, start=1):
         adaptor = Modeladaptor(client)
-        kpi_adapted_model = adaptor.adapter(original_code = clean_initial_model, instruction=step, final_path=final_path, multi_agent_setting= False, index_model= idx)
+        kpi_adapted_model = adaptor.adapter(original_code = clean_initial_model, instruction=step, final_path=final_path,  name="Adapted_model_version", multi_agent_setting= False, index_model= idx)
         print(kpi_adapted_model) # Append each adapted model's KPIs to results
         results.append(kpi_adapted_model)
 
@@ -153,7 +173,7 @@ def main() -> None:
     evaluator = Evaluater(client)
     print(evaluator.evaluate(results))
 
-    visualize_results(results, save_path=final_path)
+    visualize_results(results, file_name="model_comparison_kpis.png", save_path=final_path)
     plt.show()
 
 if __name__ == "__main__":

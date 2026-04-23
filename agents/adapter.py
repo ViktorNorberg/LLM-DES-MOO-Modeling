@@ -6,10 +6,11 @@ class Modeladaptor:
     def __init__(self, client: OpenAI):
         self.client = client
 
-    def adapter(self, original_code, instruction, final_path, multi_agent_setting: bool, index_model = 0):
+    def adapter(self, original_code, instruction, final_path,  name: str, multi_agent_setting: bool, index_model = 0):
         print("\nAdapting process:")
         if not multi_agent_setting: 
             print(f"Step {index_model} Worker activated:")
+            print(f"Instruction for model adaptation: {instruction}")
             adapted_code = self._modify_code(original_code, instruction)
 
         if multi_agent_setting:
@@ -28,9 +29,9 @@ class Modeladaptor:
         clean_code = remove_code_wrappers(adapted_code)
 
         # Save the final cleaned code.
-        filename = f"adapted_model_step{index_model}.py"
+        filename = f"{name}_{index_model}.py"
         save_model(clean_code, final_path, filename)
-        modelinfo = f"Adapted model version {index_model}"
+        modelinfo = f"{name} {index_model}"
 
         return retrieve_KPIs(clean_code, str(modelinfo))
 

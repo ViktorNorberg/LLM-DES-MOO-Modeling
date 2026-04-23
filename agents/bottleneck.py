@@ -72,7 +72,7 @@ class BottleneckOptimizer:
         )
         resp = self.client.chat.completions.create(
             model=model, 
-            messages=[{"role": "user", "content": prompt}]) 7
+            messages=[{"role": "user", "content": prompt}])
         return resp.choices[0].message.content
 
 
