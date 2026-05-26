@@ -1,4 +1,4 @@
-# LLM-DES-Modeling
+# LLM-DES-MOO-Modeling
 
 Code and resources for automating discrete-event simulation (DES) modeling and optimization with large language models (LLMs), including:
 - event log preprocessing and process mining
