@@ -5,7 +5,7 @@ from collections import Counter
  
 RANDOM_SEED = 11
 
-SIM_TIME = 3600 * 24 * 30  # example default simulation time: 30 days
+SIM_TIME = 3600 * 24 * 8  # example default simulation time: 8 days
 WARMUP_SECONDS = 24 * 3600  # example default warm-up: 1 day
 MEASURE_UNTIL = SIM_TIME   # measure until end of run by default
  
@@ -384,7 +384,7 @@ def run_simulation(seed, warmup=WARMUP_SECONDS, measure_until=MEASURE_UNTIL):
     return result
  
 if __name__ == "__main__":
-    runs = 10   # user-defined replications
+    runs = 10  # user-defined replications
     overall_results = []
     machine_results = {}
     energy_per_part_list = []

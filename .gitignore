@@ -20,6 +20,8 @@ testSCORE.py
 testBOTTLENECK.py
 testSCENARIO.py
 testOPTFLOW.py
+testAdapterEval.py
+FailedCode.py
 
 results/
 *.csv

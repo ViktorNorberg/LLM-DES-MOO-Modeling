@@ -1,6 +1,6 @@
 
 import sys
-from matplotlib import path, pyplot as plt
+from matplotlib import pyplot as plt
 from openai import OpenAI
 from processmining import eventlog, metrics
 from agents.builder import ModelBuilder
@@ -13,7 +13,6 @@ from agents.bottleneck import BottleneckOptimizer
 from agents.scenariotester import Scenarioagent
 from helpers.other_helpers import save_model, remove_code_wrappers, retrieve_KPIs, visualize_results, inspect_code
 from helpers.mermaid_renderer import render_mermaid_to_png
-import pandas as pd
 import time
 from pathlib import Path
 from dotenv import load_dotenv
@@ -33,9 +32,11 @@ final_path = Path("results")
 buffers_info_specific = "PostLoadingBuffer(Capacity = 2, processtime = 10), PostConveyorBuffer(Capacity = 2, processtime = 10), PostWashingBuffer(Capacity = 2, processtime = 10), PrePress1Buffer(Capacity = 3, processtime = 32), PrePress2Buffer(Capacity = 3, processtime = 32), " \
 "PostPress1&Press2Buffer(Capacity = 3, processtime = 32)"
 defect_info = "Defect rate = 0.089, defect sink = defect,initiated at Qualitystation"
-cpd_info = "1. The presses need to have a processtime of at least 60s. All buffer capacities must be kept at the same original level."
+cpd_info = "1. The presses need to have a processtime of at least 60s. All buffer capacities must be kept at the same original level. The original buffer capacities were: PostLoadingBuffer(Capacity = 2), PostConveyorBuffer(Capacity = 2), PostWashingBuffer(Capacity = 2), PrePress1Buffer(Capacity = 3), PrePress2Buffer(Capacity = 3), PostPress1&Press2Buffer(Capacity = 3) " 
 
 def main() -> None:
+
+    # INPUT DATA ANALYSIS STAGE
     df_raw = eventlog.load(file_path_eventlog)
     df_clean = eventlog.preprocess(df_raw)
     stations_md = metrics.compute(df_clean).to_string(index=False)
@@ -50,6 +51,7 @@ def main() -> None:
     MOO_blueprint_availability = open(file_path_blueprintmodel_MOO_availability, "r", encoding="utf-8").read()
     SCORE_blueprint = open(file_path_blueprintmodel_SCORE, "r", encoding="utf-8").read()
 
+    # MODEL GENERATION STAGE
     # Build initial model
     builder = ModelBuilder(client)
     model_code = builder.build(
@@ -98,6 +100,7 @@ def main() -> None:
     results.append(kpi_original)
     print(kpi_original)
 
+    # HERE BEGINS OPTIMIZATION STAGE
 
     print("\n" + "="*33)
     print("---OPTIONAL OPTIMIZATION STAGE---")
@@ -147,6 +150,8 @@ def main() -> None:
     
     print("back in main.py")
 
+    # HERE BEGINS ADAPTATION STAGE
+
     if isinstance(suggestions, dict):
         step_list = suggestions.get("instructions", [])
     elif isinstance(suggestions, list):
@@ -169,7 +174,7 @@ def main() -> None:
         print(kpi_adapted_model) # Append each adapted model's KPIs to results
         results.append(kpi_adapted_model)
 
-    # Evaluate all results
+    # HERE BEGINS EVALUATION STAGE
     evaluator = Evaluater(client)
     print(evaluator.evaluate(results))
 

@@ -22,10 +22,12 @@ class Blueprintoptimizer:
         print("\nOptimizer activated:")
         path = Path("results")
         
+        
         # Let the user choose the two objectives for the MOO algorithm and their corresponding optimization directions
         selected_objectives, directions = self._choose_objectives()
         objectives = f" {selected_objectives[0]} ({directions[0]}) and {selected_objectives[1]} ({directions[1]})"
-
+        
+        
         # Let the user specify the input variables for the MOO algorithm, their ranges, and whether they are discrete or continuous
         decision_variables, choice = self.choose_decision_variables()
 
@@ -58,6 +60,7 @@ class Blueprintoptimizer:
 
         #repair and run the code
         self.repair_and_run_code(clean_initial_combined_model, path, objectives, decision_variables, self.client)
+        
 
         #Extract Pareto-optimal solutions from the MOO results
         pareto_solutions = self._find_pareto_front(selected_objectives, directions)
@@ -70,7 +73,7 @@ class Blueprintoptimizer:
 
         #Generate suggestions for improvements based on the Pareto-optimal solutions and the user's priorities
         print("\nGenerating suggestions for improvements based on the Pareto-optimal solutions and user input...")
-        suggestions = self._suggest_improvements(model_code, user_input, pareto_solutions)
+        suggestions = self._suggest_improvements(model_code, user_input, pareto_solutions, selected_objectives)
 
         #visualize the results
         self.json_to_csv(suggestions)
@@ -81,7 +84,7 @@ class Blueprintoptimizer:
         print(suggestions)
         print("\n\n")
 
-        explanation = self._explain_suggestions(suggestions, pareto_solutions, model_code)
+        explanation = self._explain_suggestions(suggestions, model_code)
 
         print(explanation)
         print("")
@@ -89,7 +92,7 @@ class Blueprintoptimizer:
         return suggestions
     
 
-    def _explain_suggestions(self, suggestions, pareto_solutions, model_code,
+    def _explain_suggestions(self, suggestions, model_code,
         model = "gpt-5-mini"):
         prompt = (
             "You are an AI assistant that explains suggestions for improving a production system. "
@@ -108,21 +111,20 @@ class Blueprintoptimizer:
 
 
 
-    def _suggest_improvements(self, model_code, user_input, pareto_solutions,
+    def _suggest_improvements(self, model_code, user_input, pareto_solutions, selected_objectives,
         model = "gpt-5-mini",
         response_format={"type": "json_object"}):
         prompt = (
                 "You are an AI assistant that suggests improvements to a production system based on the results of a multi-objective optimization (MOO) analysis. "
                 "The improvements should be based on the results of a MOO analysis, which are provided in a csv format. "
-                "Choose three datapoints on the provided pareto fron and suggest specific, implementable instructions to improve the system based on those datapoints. "
+                "Choose three datapoints on the provided pareto front and suggest specific, implementable instructions to improve the system based on those datapoints. "
                 f"When choosing the datapoints, consider the these instructions from the perspective of a production manager: \n {user_input}\n"
-                "Based on the three datapoints you choose, suggest specific, implementable instructions to improve the system. "
-                "They should be easily implementable with the existing model. "
                 f"Here is my Python code:\n\n```python\n {model_code}\n```\n\n"
                 f"Here are the results of the MOO analysis:\n\n {pareto_solutions}\n"
                 "Only answer with the instructions in a json format."
                 "The instructions should only contain the input variable settings and corresponding objectives values, no explanations"
-                "The json format should be like this, though the variable names and values should be chosen from the MOO results: { 'instructions': [ {'PostLoadingBuffer': 1, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 1, 'PrePress1Buffer': 1, 'PrePress2Buffer': 1, 'PostPress12Buffer': 1, 'throughput': 28.114285714285717, 'wip': 10.779661016949152}, {'PostLoadingBuffer': 1, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 1, 'PrePress1Buffer': 1, 'PrePress2Buffer': 3, 'PostPress12Buffer': 1, 'throughput': 30.17142857142857, 'wip': 12.836158192090396}] }"
+                f"The objectives are: {selected_objectives}"
+                "The json format should be like this, though the variable and objective names and values should be chosen from the MOO results: { 'instructions': [ {'PostLoadingBuffer': 1, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 1, 'PrePress1Buffer': 1, 'PrePress2Buffer': 1, 'PostPress12Buffer': 1, 'throughput': 28.114285714285717, 'wip': 10.779661016949152}, {'PostLoadingBuffer': 1, 'PostConveyorBuffer': 1, 'PostWashingBuffer': 1, 'PrePress1Buffer': 1, 'PrePress2Buffer': 3, 'PostPress12Buffer': 1, 'throughput': 30.17142857142857, 'wip': 12.836158192090396}] }"
                 f"Make sure that the variable names in the instructions are the same as the ones in the \n\n {pareto_solutions} \n"
                 "Make sure to only output the json object and nothing else. No explanations, no markdown fences."
                 )
@@ -208,7 +210,7 @@ class Blueprintoptimizer:
         # Dictionary to map choices to the required lists
         scenarios = {
             "1": (["wip", "throughput"], ["min", "max"]),
-            "2": (["wip", "energy consumtion per part"], ["min", "min"]),
+            "2": (["wip", "energy consumption per part"], ["min", "min"]),
             "3": (["throughput", "energy consumption per part"], ["max", "min"])
         }
 
@@ -313,8 +315,8 @@ class Blueprintoptimizer:
 
         population_size = input("What population size would you like to use for the MOO algorithm? (e.g. 100) ")
         generations = input("How many generations should the MOO algorithm run for? (e.g. 50) ")
-        SIM_TIME = input("How long should the simulation run for in seconds? (e.g. 10000) ")
-        WARMUP_SECONDS = input("How long should the warmup period be for the simulation in seconds? (e.g. 100) ")
+        SIM_TIME = input("How long should the simulation run for in seconds? (e.g. 691200 ) ")
+        WARMUP_SECONDS = input("How long should the warmup period be for the simulation in seconds? (e.g. 86400) ")
         print("-" * 30 + "\n")
         
         return population_size, generations, SIM_TIME, WARMUP_SECONDS
@@ -322,7 +324,7 @@ class Blueprintoptimizer:
 
     def _find_pareto_front(self,selected_objectives, directions):
 
-        df = pd.read_csv("moo_simulation_results.csv")
+        df = pd.read_csv("moo_simulation_results_buffer.csv")
 
         mask = paretoset(df[[selected_objectives[0], selected_objectives[1]]], sense=[directions[0], directions[1]])
 
@@ -397,7 +399,7 @@ class Blueprintoptimizer:
     def visualize_MOO_results(self, selected_objectives):
         
         # Load data
-        df = pd.read_csv("moo_simulation_results.csv")
+        df = pd.read_csv("moo_simulation_results_buffer.csv")
         df['Type'] = 'Standard Solution'
 
         df2 = pd.read_csv("moo_pareto_solutions.csv")
@@ -426,7 +428,7 @@ class Blueprintoptimizer:
             template="plotly_white"
         )
         
-        # Improve layout: force the legend to be visible and markers to be distinct
+        # Improve layout
         fig.update_traces(marker=dict(size=10, opacity=0.8, line=dict(width=1, color='DarkGrey')))
         
         fig.show()

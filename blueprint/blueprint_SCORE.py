@@ -102,15 +102,19 @@ def export_history_to_csv(result, filename="SCORE_results.csv"):
     fieldnames.extend(["active_flags", "throughput"]) 
 
     rows = []
-    for gen_idx, algo in enumerate(result.history):
+
+    for algo in enumerate(result.history):
         X, F = algo.pop.get("X"), algo.pop.get("F")
         G = algo.pop.get("G") # Get the constraints
         
         for ind_idx in range(len(X)):
             x = X[ind_idx]
             f = F[ind_idx]
+            g = G[ind_idx] # Get the constraint value
             
-            
+
+            if g[0] > 0: 
+                continue
             
             row = {
 

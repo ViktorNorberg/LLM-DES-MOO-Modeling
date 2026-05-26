@@ -1,16 +1,12 @@
 import os
 
 from pathlib import Path
-from openai import OpenAI
 import json
 from helpers.other_helpers import remove_code_wrappers, remove_code_wrappers, save_model
-from helpers.mermaid_renderer import render_mermaid_to_png
 from helpers.runner import run_python_code
 from paretoset import paretoset
-from agents.visualizer import Modelvisualizer
 from agents.inspector import Modelinspector
 import pandas as pd
-import plotly.express as px
 
 class BottleneckOptimizer:
     def __init__(self, client):
@@ -21,8 +17,8 @@ class BottleneckOptimizer:
         print("\nBottleneck agent activated:")
         path = Path("results")
 
-        WARMUP_SECONDS = 100
-        SIM_TIME = 3600
+        WARMUP_SECONDS = 86400
+        SIM_TIME = 86400 *2
         top_n_fronts = 5
 
         MOO_code = self._generate_code(model_code, SCORE_blueprint)
@@ -217,13 +213,13 @@ class BottleneckOptimizer:
             remaining_indices = remaining_indices.difference(current_front_indices)
             current_rank += 1
             
-        # Filter to keep only the top N ranked solutions
+        #Filter to keep only the top N ranked solutions
         pareto_solutions = df[df['temp_pareto_rank'].notna()].copy()
         
         # Sort by the temporary rank first, then by the first objective
         pareto_solutions.sort_values(by=['temp_pareto_rank', selected_objectives[0]], inplace=True)
 
-        # Drop the temporary rank column so it doesn't appear in the final output
+        #Drop the temporary rank column so it doesn't appear in the final output
         pareto_solutions.drop(columns=['temp_pareto_rank'], inplace=True)
 
         MOO_pareto_csv_path = Path("SCORE_pareto_solutions.csv")
@@ -236,21 +232,19 @@ class BottleneckOptimizer:
 
 
     def get_flag_frequencies(self):
-        # 1. Read the data into a Pandas DataFrame
         df = pd.read_csv("SCORE_pareto_solutions.csv")
         
-        # 2. Define the columns to exclude (metadata and objectives)
+        # Define the columns to exclude objectives 
         exclude_columns = ['active_flags', 'throughput']
         
-        # 3. Filter the dataframe to only include the flag (variable) columns
+        # Filter the dataframe to only include the flag variable columns
         flag_columns = [col for col in df.columns if col not in exclude_columns]
         df_flags = df[flag_columns]
         
-        # 4. Sum the columns. Since values are 0 or 1, the sum is the frequency.
-        # Convert this directly to a dictionary.
+        # Sum the columns
         frequency_dict = df_flags.sum().to_dict()
         
-        # 5. Sort the dictionary by value (frequency) in descending order
+        # Sort the dictionary by value (frequency) in descending order
         sorted_frequency = dict(sorted(frequency_dict.items(), key=lambda item: item[1], reverse=True))
         
         return sorted_frequency

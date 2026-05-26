@@ -87,7 +87,7 @@ class Modelvisualizer:
         resp = self.client.chat.completions.create(
             model=model, 
             messages=[{"role": "user", "content": prompt}]) 
-            #temperature=0.1)
+           
         try:
             return resp.choices[0].message.content
         except Exception as e:

@@ -1,8 +1,6 @@
 from openai import OpenAI
 
 
-
-
 class Modelinspector:
     
     def __init__(self, client: OpenAI):
