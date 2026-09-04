@@ -20,6 +20,14 @@ class Blueprintoptimizer:
 
     def optimize(self, model_code, MOO_blueprint_buffer, MOO_blueprint_availability):
         print("\nOptimizer activated:")
+        demo_nr = input("which demo would you like to run? 1, 2 or 3")
+        if demo_nr == 1:
+            filepath = "data/moo_simulation_results1.csv"
+        elif demo_nr == 2:
+            filepath = "data/moo_simulation_results2.csv"
+        else:
+            filepath = "data/moo_simulation_results3.csv"
+        
         path = Path("results")
         
         
@@ -64,7 +72,7 @@ class Blueprintoptimizer:
         
 
         #Extract Pareto-optimal solutions from the MOO results
-        pareto_solutions = self._find_pareto_front(selected_objectives, directions)
+        pareto_solutions = self._find_pareto_front(selected_objectives, directions, filepath)
         print("\nSee the results of the MOO algorithm in 'moo_simulation_results.csv'")
         print("And the pareto optimal solutions here: 'moo_pareto_solutions.csv'")
    
@@ -78,7 +86,7 @@ class Blueprintoptimizer:
 
         #visualize the results
         self.json_to_csv(suggestions)
-        self.visualize_MOO_results(selected_objectives)
+        self.visualize_MOO_results(selected_objectives, filepath)
 
         print("")
         print("Suggested changes based on the MOO algorithm")
@@ -323,9 +331,9 @@ class Blueprintoptimizer:
         return population_size, generations, SIM_TIME, WARMUP_SECONDS
 
 
-    def _find_pareto_front(self,selected_objectives, directions):
+    def _find_pareto_front(self,selected_objectives, directions, filepath):
 
-        df = pd.read_csv("data/moo_simulation_results.csv")
+        df = pd.read_csv(filepath)
 
         mask = paretoset(df[[selected_objectives[0], selected_objectives[1]]], sense=[directions[0], directions[1]])
 
@@ -397,10 +405,10 @@ class Blueprintoptimizer:
 
     
 
-    def visualize_MOO_results(self, selected_objectives):
+    def visualize_MOO_results(self, selected_objectives, filepath):
         
         # Load data
-        df = pd.read_csv("data/moo_simulation_results.csv")
+        df = pd.read_csv(filepath)
         df['Type'] = 'Standard Solution'
 
         df2 = pd.read_csv("moo_pareto_solutions.csv")
