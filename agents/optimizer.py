@@ -324,7 +324,7 @@ class Blueprintoptimizer:
 
     def _find_pareto_front(self,selected_objectives, directions):
 
-        df = pd.read_csv("moo_simulation_results_buffer.csv")
+        df = pd.read_csv("moo_simulation_results.csv")
 
         mask = paretoset(df[[selected_objectives[0], selected_objectives[1]]], sense=[directions[0], directions[1]])
 
@@ -399,7 +399,7 @@ class Blueprintoptimizer:
     def visualize_MOO_results(self, selected_objectives):
         
         # Load data
-        df = pd.read_csv("moo_simulation_results_buffer.csv")
+        df = pd.read_csv("moo_simulation_results.csv")
         df['Type'] = 'Standard Solution'
 
         df2 = pd.read_csv("moo_pareto_solutions.csv")
