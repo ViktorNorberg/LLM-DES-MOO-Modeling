@@ -21,12 +21,12 @@ class Blueprintoptimizer:
     def optimize(self, model_code, MOO_blueprint_buffer, MOO_blueprint_availability):
         print("\nOptimizer activated:")
         demo_nr = input("which demo would you like to run? 1, 2 or 3")
-        if demo_nr == 1:
-            filepath = "data/moo_simulation_results1.csv"
-        elif demo_nr == 2:
-            filepath = "data/moo_simulation_results2.csv"
+        if demo_nr == "1":
+            filepath = Path("data/moo_simulation_results1.csv")
+        elif demo_nr == "2":
+            filepath = Path("data/moo_simulation_results2.csv")
         else:
-            filepath = "data/moo_simulation_results3.csv"
+            filepath = Path("data/moo_simulation_results3.csv")
         
         path = Path("results")
         
