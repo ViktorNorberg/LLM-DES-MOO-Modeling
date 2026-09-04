@@ -59,7 +59,8 @@ class Blueprintoptimizer:
         self.save_UML(UML_diagram, path)
 
         #repair and run the code
-        self.repair_and_run_code(clean_initial_combined_model, path, objectives, decision_variables, self.client)
+        #self.repair_and_run_code(clean_initial_combined_model, path, objectives, decision_variables, self.client)
+        print('Demo version: prerun solutions are utilized instead of runing code')
         
 
         #Extract Pareto-optimal solutions from the MOO results
